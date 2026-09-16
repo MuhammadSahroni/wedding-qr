@@ -1,0 +1,14 @@
+services:
+  wedding-checkin:
+    build: .
+    container_name: wedding-checkin-app
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - NODE_ENV=production
+    volumes:
+      # Mount directory agar state check-in & walk-in tersimpan persisten di host
+      - ./server/checkin_state.json:/app/server/checkin_state.json
+      - ./server/walkin_guests.json:/app/server/walkin_guests.json

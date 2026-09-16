@@ -1,13 +1,42 @@
 /**
- * Audio feedback system using Web Audio API
- * No external audio files needed
+ * Audio feedback system for Scanner App
+ * Plays:
+ * - "Sound Succesed Check in.mp3" for successful scan & check-in
+ * - "Error Notification.mp3" for error, failed scan, or already checked-in duplicate warning
+ * with synthesized audio fallback.
  */
+
+const SUCCESS_SOUND_URL = '/sfx/sound-success.mp3';
+const ERROR_SOUND_URL = '/sfx/sound-error.mp3';
+
+let successAudio = null;
+let errorAudio = null;
+let audioUnlocked = false;
+
+function getSuccessAudio() {
+  if (!successAudio && typeof Audio !== 'undefined') {
+    successAudio = new Audio(SUCCESS_SOUND_URL);
+    successAudio.preload = 'auto';
+  }
+  return successAudio;
+}
+
+function getErrorAudio() {
+  if (!errorAudio && typeof Audio !== 'undefined') {
+    errorAudio = new Audio(ERROR_SOUND_URL);
+    errorAudio.preload = 'auto';
+  }
+  return errorAudio;
+}
 
 let audioContext = null;
 
 function getAudioContext() {
-  if (!audioContext) {
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  if (!audioContext && typeof window !== 'undefined') {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (AudioCtx) {
+      audioContext = new AudioCtx();
+    }
   }
   return audioContext;
 }
@@ -15,6 +44,10 @@ function getAudioContext() {
 function playTone(frequency, duration, type = 'sine', volume = 0.3) {
   try {
     const ctx = getAudioContext();
+    if (!ctx) return;
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
 
@@ -30,34 +63,98 @@ function playTone(frequency, duration, type = 'sine', volume = 0.3) {
     oscillator.start(ctx.currentTime);
     oscillator.stop(ctx.currentTime + duration);
   } catch (e) {
-    console.warn('Audio playback failed:', e);
+    console.warn('Audio tone playback failed:', e);
   }
 }
 
-// Success chime - pleasant double beep
-export function playSuccess() {
+// Fallback synth chimes
+function playSynthSuccess() {
   playTone(880, 0.15, 'sine', 0.25);
   setTimeout(() => playTone(1320, 0.25, 'sine', 0.2), 150);
 }
 
-// Duplicate warning - low double buzz
-export function playDuplicate() {
-  playTone(330, 0.2, 'square', 0.15);
-  setTimeout(() => playTone(330, 0.3, 'square', 0.15), 250);
-}
-
-// Error alert - descending buzz
-export function playError() {
+function playSynthError() {
   playTone(440, 0.15, 'sawtooth', 0.15);
   setTimeout(() => playTone(220, 0.3, 'sawtooth', 0.15), 150);
 }
 
-// Initialize audio context (must be called on user interaction)
-export function initAudio() {
+function playSynthDuplicate() {
+  playTone(330, 0.2, 'square', 0.15);
+  setTimeout(() => playTone(330, 0.3, 'square', 0.15), 250);
+}
+
+// Success sound: plays "Sound Succesed Check in.mp3"
+export function playSuccess() {
   try {
-    getAudioContext();
-    // Play a silent tone to unlock audio
-    playTone(1, 0.01, 'sine', 0.001);
+    const audio = getSuccessAudio();
+    if (audio) {
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Success MP3 play failed, falling back to synth:', err);
+          playSynthSuccess();
+        });
+      }
+    } else {
+      playSynthSuccess();
+    }
+  } catch (e) {
+    console.warn('Success audio error, using synth:', e);
+    playSynthSuccess();
+  }
+}
+
+// Error / Duplicate Warning sound: plays "Error Notification.mp3"
+export function playError() {
+  try {
+    const audio = getErrorAudio();
+    if (audio) {
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.catch((err) => {
+          console.warn('Error MP3 play failed, falling back to synth:', err);
+          playSynthError();
+        });
+      }
+    } else {
+      playSynthError();
+    }
+  } catch (e) {
+    console.warn('Error audio failed, using synth:', e);
+    playSynthError();
+  }
+}
+
+// Duplicate warning uses the Error Notification sound as requested
+export function playDuplicate() {
+  playError();
+}
+
+// Initialize audio context and pre-load sounds on first user interaction
+export function initAudio() {
+  if (audioUnlocked) return;
+  try {
+    const unlock = () => {
+      audioUnlocked = true;
+      const successA = getSuccessAudio();
+      if (successA) successA.load();
+      const errorA = getErrorAudio();
+      if (errorA) errorA.load();
+
+      const ctx = getAudioContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      window.removeEventListener('click', unlock);
+      window.removeEventListener('touchstart', unlock);
+      window.removeEventListener('keydown', unlock);
+    };
+
+    window.addEventListener('click', unlock, { once: true });
+    window.addEventListener('touchstart', unlock, { once: true });
+    window.addEventListener('keydown', unlock, { once: true });
   } catch (e) {
     console.warn('Audio init failed:', e);
   }

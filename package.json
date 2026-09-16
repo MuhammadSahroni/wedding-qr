@@ -8,7 +8,15 @@
     "server": "cd server && node server.js",
     "scanner": "cd scanner-app && npm run dev",
     "display": "cd display-app && npm run dev",
-    "install:all": "npm install && cd server && npm install && cd ../scanner-app && npm install && cd ../display-app && npm install"
+    "tunnel:cf": "npx cloudflared tunnel --url http://localhost:5173",
+    "tunnel:ngrok": "npx ngrok http --domain=compare-resistant-runny.ngrok-free.dev 5173",
+    "all": "concurrently -n \"SERVER,SCANNER,DISPLAY,TUNNEL\" -c \"blue,green,magenta,cyan\" \"npm run server\" \"npm run scanner\" \"npm run display\" \"npm run tunnel:cf\"",
+    "install:all": "npm install && cd server && npm install && cd ../scanner-app && npm install && cd ../display-app && npm install",
+    "build:scanner": "cd scanner-app && npm run build",
+    "build:display": "cd display-app && npm run build",
+    "build": "npm run build:scanner && npm run build:display",
+    "build:all": "npm run install:all && npm run build",
+    "start:prod": "node server/server.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"

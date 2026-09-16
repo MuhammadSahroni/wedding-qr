@@ -1,1 +1,158 @@
 /* App-level styles (overrides & additions) */
+
+/* Button Header QR Meja */
+.btn-qr-meja {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: linear-gradient(135deg, #C5A55A 0%, #8B7635 100%);
+  color: #FFFFFF;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(197, 165, 90, 0.3);
+  transition: all 0.2s ease;
+}
+
+.btn-qr-meja:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(197, 165, 90, 0.45);
+}
+
+.btn-qr-meja .material-symbols-outlined {
+  font-size: 18px;
+}
+
+/* Checkin Method Badges */
+.method-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  margin-left: 6px;
+  text-transform: capitalize;
+}
+
+.method-qr-scan {
+  background: #E3F2FD;
+  color: #1565C0;
+  border: 1px solid #BBDEFB;
+}
+
+.method-input-panitia {
+  background: #EDE7F6;
+  color: #512DA8;
+  border: 1px solid #D1C4E9;
+}
+
+.method-mandiri {
+  background: #FFF8E1;
+  color: #8C6200;
+  border: 1px solid #FFE082;
+}
+
+/* Modal QR Meja */
+.modal-qr-meja {
+  text-align: center;
+  max-width: 440px;
+  width: 90%;
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 26px 20px;
+  border: 1.5px solid #C5A55A;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, 0.2);
+}
+
+.qr-meja-preview {
+  margin: 18px 0;
+  padding: 16px;
+  background: #FAF8F5;
+  border: 1.5px dashed #C5A55A;
+  border-radius: 14px;
+  display: inline-block;
+}
+
+.qr-meja-img {
+  width: 220px;
+  height: 220px;
+  display: block;
+  margin: 0 auto 10px auto;
+  border-radius: 8px;
+}
+
+.qr-meja-caption {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #4A3F32;
+  margin-top: 6px;
+}
+
+.qr-meja-subcaption {
+  font-size: 0.75rem;
+  color: #7A6F5F;
+}
+
+.qr-link-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #F5F0E8;
+  padding: 8px 12px;
+  border-radius: 10px;
+  margin-bottom: 18px;
+  border: 1px solid #E5DBCB;
+}
+
+.qr-link-text {
+  flex: 1;
+  font-size: 0.8rem;
+  color: #2C2417;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: monospace;
+}
+
+.qr-link-btn {
+  background: #C5A55A;
+  color: #FFFFFF;
+  border: none;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.qr-modal-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .modal-qr-meja, .modal-qr-meja * {
+    visibility: visible;
+  }
+  .modal-qr-meja {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    max-width: 100%;
+    border: none;
+    box-shadow: none;
+  }
+  .qr-modal-buttons, .qr-link-box {
+    display: none;
+  }
+}
+

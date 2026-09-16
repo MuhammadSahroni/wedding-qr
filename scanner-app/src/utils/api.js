@@ -2,7 +2,7 @@
  * API helper for communicating with the backend server
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || `http://${window.location.hostname}:3001`;
+const API_BASE = import.meta.env.VITE_API_URL || '';
 
 async function fetchAPI(path, options = {}) {
   const url = `${API_BASE}${path}`;
@@ -10,6 +10,7 @@ async function fetchAPI(path, options = {}) {
     headers: {
       'Content-Type': 'application/json',
       'Bypass-Tunnel-Reminder': 'true',
+      'ngrok-skip-browser-warning': 'true',
       ...(options.headers || {})
     },
     ...options,
@@ -17,16 +18,27 @@ async function fetchAPI(path, options = {}) {
   return response;
 }
 
-export async function checkinGuest(query) {
+export async function checkinGuest(query, method = 'QR Scan') {
   const res = await fetchAPI('/api/checkin', {
     method: 'POST',
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, method }),
   });
   return { status: res.status, data: await res.json() };
 }
 
-export async function checkinGuestById(id) {
-  const res = await fetchAPI(`/api/checkin/${id}`, { method: 'POST' });
+export async function checkinGuestById(id, method = 'Input Panitia') {
+  const res = await fetchAPI(`/api/checkin/${id}`, {
+    method: 'POST',
+    body: JSON.stringify({ method }),
+  });
+  return { status: res.status, data: await res.json() };
+}
+
+export async function selfCheckin({ id, name, is_walkin }) {
+  const res = await fetchAPI('/api/self-checkin', {
+    method: 'POST',
+    body: JSON.stringify({ id, name, is_walkin }),
+  });
   return { status: res.status, data: await res.json() };
 }
 

@@ -4,7 +4,7 @@
  */
 
 const defaultWsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-const WS_URL = import.meta.env.VITE_WS_URL || `${defaultWsProtocol}//${window.location.hostname}:3001`;
+const WS_URL = import.meta.env.VITE_WS_URL || `${defaultWsProtocol}//${window.location.host}/ws`;
 
 let ws = null;
 let reconnectTimer = null;
