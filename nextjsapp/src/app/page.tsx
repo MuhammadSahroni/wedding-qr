@@ -47,7 +47,7 @@ export default function HomePage() {
             </div>
             <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[#C5A55A] group-hover:translate-x-1 transition-transform">
               <span>Buka Scanner</span>
-              <span>&rarr;</span>
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
             </div>
           </Link>
 
@@ -69,7 +69,7 @@ export default function HomePage() {
             </div>
             <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[#C5A55A] group-hover:translate-x-1 transition-transform">
               <span>Buka Display Layar</span>
-              <span>&rarr;</span>
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
             </div>
           </Link>
 
@@ -91,7 +91,7 @@ export default function HomePage() {
             </div>
             <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[#C5A55A] group-hover:translate-x-1 transition-transform">
               <span>Buka Halaman Mandiri</span>
-              <span>&rarr;</span>
+              <span className="material-symbols-outlined text-base">arrow_forward</span>
             </div>
           </Link>
         </div>

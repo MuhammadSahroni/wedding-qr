@@ -246,7 +246,7 @@ export default function ScannerPage() {
         (decodedText) => {
           processScan(decodedText);
         },
-        () => {}
+        () => { }
       );
     } catch (err: any) {
       console.error('Camera error:', err);
@@ -431,7 +431,7 @@ export default function ScannerPage() {
       <header className="app-header">
         <div className="header-title">
           <h1>The Wedding of Wildan & Aisyah</h1>
-          <span className="subtitle">Guest Check-In System (Cloudflare & Google Sheets)</span>
+          <span className="subtitle">Guest Check-In System</span>
         </div>
         <div className="header-right">
           <button
@@ -441,7 +441,7 @@ export default function ScannerPage() {
             title="Tampilkan QR Code Meja untuk Tamu Check-In Mandiri"
           >
             <span className="material-symbols-outlined">qr_code_2</span>
-            <span>QR Meja Mandiri</span>
+            <span>QR Self Check-in</span>
           </button>
           <div className="connection-badge">
             <span className={`status-indicator ${isOnline ? 'connected' : 'disconnected'}`}></span>
@@ -460,9 +460,9 @@ export default function ScannerPage() {
             <div className="card-header">
               <span className="material-symbols-outlined card-header-icon">photo_camera</span>
               <div>
-                <h2>Scanner Kamera QR Code</h2>
+                <h2>Scan QR Code</h2>
                 <p className="card-subtitle">
-                  Arahkan kamera ke QR Code kartu undangan tamu untuk check-in instan
+                  Arahkan kamera ke QR Code kartu undangan tamu untuk melakukan check-in
                 </p>
               </div>
             </div>
@@ -842,14 +842,17 @@ export default function ScannerPage() {
               <span className="qr-link-text">{selfCheckinUrl}</span>
               <button
                 type="button"
-                className="qr-link-btn"
+                className="qr-link-btn flex items-center gap-1"
                 onClick={() => {
                   navigator.clipboard.writeText(selfCheckinUrl);
                   setCopiedLink(true);
                   setTimeout(() => setCopiedLink(false), 2000);
                 }}
               >
-                {copiedLink ? 'Tersalin!' : 'Salin Link'}
+                <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>
+                  {copiedLink ? 'check' : 'content_copy'}
+                </span>
+                <span>{copiedLink ? 'Tersalin!' : 'Salin Link'}</span>
               </button>
             </div>
 
@@ -866,7 +869,7 @@ export default function ScannerPage() {
                 className="btn btn-modal-cancel"
                 onClick={() => setShowMejaQrModal(false)}
               >
-                Tutup
+                <span className="material-symbols-outlined">close</span> Tutup
               </button>
             </div>
           </div>

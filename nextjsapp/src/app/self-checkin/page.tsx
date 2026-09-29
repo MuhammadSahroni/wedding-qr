@@ -240,7 +240,9 @@ export default function SelfCheckinPage() {
           {successData ? (
             /* Success Screen */
             <div className="self-success-wrapper">
-              <div className="self-success-icon-box">✓</div>
+              <div className="self-success-icon-box">
+                <span className="material-symbols-outlined" style={{ fontSize: '44px' }}>check_circle</span>
+              </div>
               <div className="self-success-heading">Selamat Datang</div>
               <h2 className="self-success-subtitle">Terima Kasih Atas Kehadirannya</h2>
               <div className="self-success-name">
@@ -271,7 +273,7 @@ export default function SelfCheckinPage() {
               </p>
 
               <button type="button" className="self-btn-secondary" onClick={handleReset}>
-                <span className="text-lg">↻</span>
+                <span className="material-symbols-outlined">restart_alt</span>
                 Check-In Tamu Lainnya
               </button>
             </div>
@@ -288,7 +290,7 @@ export default function SelfCheckinPage() {
                     setAlertInfo(null);
                   }}
                 >
-                  <span className="text-base">🔍</span>
+                  <span className="material-symbols-outlined">person_search</span>
                   <span>Cari Nama Undangan</span>
                 </button>
                 <button
@@ -299,7 +301,7 @@ export default function SelfCheckinPage() {
                     setAlertInfo(null);
                   }}
                 >
-                  <span className="text-base">✍️</span>
+                  <span className="material-symbols-outlined">person_add</span>
                   <span>Tamu Baru / Walk-In</span>
                 </button>
               </div>
@@ -308,8 +310,8 @@ export default function SelfCheckinPage() {
                 {/* Alert Notification */}
                 {alertInfo && (
                   <div className={`self-alert ${alertInfo.type}`}>
-                    <span className="self-alert-icon">
-                      {alertInfo.type === 'warning' ? '⚠️' : '⛔'}
+                    <span className="material-symbols-outlined self-alert-icon">
+                      {alertInfo.type === 'warning' ? 'warning' : 'error'}
                     </span>
                     <div>{alertInfo.message}</div>
                   </div>
@@ -323,7 +325,7 @@ export default function SelfCheckinPage() {
                         Ketik Nama Anda pada Daftar Undangan:
                       </label>
                       <div className="self-input-box">
-                        <span className="self-input-icon">🔍</span>
+                        <span className="material-symbols-outlined self-input-icon">search</span>
                         <input
                           id="search-input"
                           type="text"
@@ -345,10 +347,12 @@ export default function SelfCheckinPage() {
                             }}
                             title="Hapus pencarian"
                           >
-                            ✕
+                            <span className="material-symbols-outlined" style={{ fontSize: '16px' }}>close</span>
                           </button>
                         )}
-                        {isSearching && <span className="self-input-spinner">⌛</span>}
+                        {isSearching && (
+                          <span className="material-symbols-outlined self-input-spinner">progress_activity</span>
+                        )}
                       </div>
                     </div>
 
@@ -373,9 +377,15 @@ export default function SelfCheckinPage() {
                             </div>
                             <div>
                               {guest.is_present ? (
-                                <span className="self-status-pill present">✓ Sudah Hadir</span>
+                                <span className="self-status-pill present">
+                                  <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>check_circle</span>
+                                  <span>Sudah Hadir</span>
+                                </span>
                               ) : (
-                                <span className="self-status-pill ready">Pilih</span>
+                                <span className="self-status-pill ready">
+                                  <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>touch_app</span>
+                                  <span>Pilih</span>
+                                </span>
                               )}
                             </div>
                           </div>
@@ -391,14 +401,15 @@ export default function SelfCheckinPage() {
                         </p>
                         <button
                           type="button"
-                          className="self-btn-link"
+                          className="self-btn-link inline-flex items-center gap-1"
                           onClick={() => {
                             setActiveTab('walkin');
                             setWalkinName(query);
                             setAlertInfo(null);
                           }}
                         >
-                          Daftar Sekarang Sebagai Tamu Baru / Walk-In →
+                          <span>Daftar Sekarang Sebagai Tamu Baru / Walk-In</span>
+                          <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_forward</span>
                         </button>
                       </div>
                     )}
@@ -418,10 +429,13 @@ export default function SelfCheckinPage() {
                           onClick={handleConfirmRegistered}
                         >
                           {isSubmitting ? (
-                            <span>Memproses Kehadiran...</span>
+                            <>
+                              <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                              <span>Memproses Kehadiran...</span>
+                            </>
                           ) : (
                             <>
-                              <span>✨</span>
+                              <span className="material-symbols-outlined">how_to_reg</span>
                               <span>Konfirmasi Kehadiran Saya</span>
                             </>
                           )}
@@ -510,10 +524,13 @@ export default function SelfCheckinPage() {
                       disabled={isSubmitting || !walkinName.trim()}
                     >
                       {isSubmitting ? (
-                        <span>Menyimpan ke Buku Tamu...</span>
+                        <>
+                          <span className="material-symbols-outlined animate-spin">progress_activity</span>
+                          <span>Menyimpan ke Buku Tamu...</span>
+                        </>
                       ) : (
                         <>
-                          <span>✨</span>
+                          <span className="material-symbols-outlined">how_to_reg</span>
                           <span>Simpan &amp; Check-In Kehadiran</span>
                         </>
                       )}
@@ -528,8 +545,9 @@ export default function SelfCheckinPage() {
         {/* Footer Navigation */}
         <footer className="self-footer">
           <p>The Wedding of Wildan &amp; Aisyah</p>
-          <Link href="/" className="self-footer-link">
-            ← Kembali ke Menu Utama
+          <Link href="/" className="self-footer-link inline-flex items-center gap-1">
+            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_back</span>
+            <span>Kembali ke Menu Utama</span>
           </Link>
         </footer>
       </div>
