@@ -1,26 +1,6 @@
-'use client';
-
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Stats } from '@/lib/types';
 
 export default function HomePage() {
-  const [stats, setStats] = useState<Stats>({ total: 0, present: 0, absent: 0, percentage: 0 });
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    fetch('/api/stats')
-      .then(res => res.json())
-      .then(data => {
-        setStats(data);
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error(err);
-        setLoading(false);
-      });
-  }, []);
-
   return (
     <div className="min-h-screen bg-[#F5F0E8] text-[#2C2417] flex flex-col justify-between selection:bg-[#C5A55A] selection:text-white">
       {/* Decorative top bar */}
@@ -28,55 +8,23 @@ export default function HomePage() {
 
       <main className="max-w-5xl mx-auto w-full px-6 py-12 flex-1 flex flex-col items-center justify-center">
         {/* Wedding Title Header */}
-        <div className="text-center mb-10">
-          <div className="inline-block px-4 py-1 mb-3 text-xs tracking-widest uppercase font-semibold text-[#8B7635] bg-[#E8D5A3]/40 rounded-full border border-[#C5A55A]/30">
+        <div className="text-center mb-12">
+          <div className="inline-block px-4 py-1 mb-4 text-xs tracking-widest uppercase font-semibold text-[#8B7635] bg-[#E8D5A3]/40 rounded-full border border-[#C5A55A]/30">
             Resepsi Pernikahan
           </div>
-          <h1 className="text-4xl md:text-5xl font-serif text-[#2C2417] mb-2 font-normal">
+          <div 
+            style={{ fontFamily: "'Great Vibes', cursive" }} 
+            className="text-4xl md:text-5xl text-[#C5A55A] mb-1 font-normal"
+          >
+            The Wedding of
+          </div>
+          <h1 className="text-4xl md:text-5xl font-serif text-[#2C2417] mb-3 font-normal tracking-wide">
             Wildan <span className="text-[#C5A55A] italic font-serif">&amp;</span> Aisyah
           </h1>
+          <div className="w-24 h-0.5 bg-gradient-to-r from-transparent via-[#C5A55A] to-transparent mx-auto mb-3" />
           <p className="text-sm md:text-base text-[#7A6F5F] font-sans tracking-wide">
-            Sistem Check-In Tamu Resepsi • Cloudflare Workers &amp; Google Spreadsheet Monorepo
+            Sistem Buku Tamu &amp; Check-In Undangan Digital
           </p>
-        </div>
-
-        {/* Live Stats Counter Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full mb-10">
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#E8DFD0] text-center">
-            <span className="text-xs uppercase tracking-wider text-[#7A6F5F] font-semibold block mb-1">
-              Total Tamu
-            </span>
-            <span className="text-3xl font-bold text-[#2C2417]">
-              {loading ? '...' : stats.total}
-            </span>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#C5A55A]/40 text-center">
-            <span className="text-xs uppercase tracking-wider text-[#4CAF50] font-semibold block mb-1">
-              Tamu Hadir
-            </span>
-            <span className="text-3xl font-bold text-[#4CAF50]">
-              {loading ? '...' : stats.present}
-            </span>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#E8DFD0] text-center">
-            <span className="text-xs uppercase tracking-wider text-[#7A6F5F] font-semibold block mb-1">
-              Belum Hadir
-            </span>
-            <span className="text-3xl font-bold text-[#7A6F5F]">
-              {loading ? '...' : stats.absent}
-            </span>
-          </div>
-
-          <div className="bg-white rounded-2xl p-5 shadow-sm border border-[#C5A55A]/40 text-center">
-            <span className="text-xs uppercase tracking-wider text-[#8B7635] font-semibold block mb-1">
-              Persentase
-            </span>
-            <span className="text-3xl font-bold text-[#C5A55A]">
-              {loading ? '...' : `${stats.percentage}%`}
-            </span>
-          </div>
         </div>
 
         {/* Main Navigation Modules */}

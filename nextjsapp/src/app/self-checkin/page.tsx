@@ -1,8 +1,36 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Link from 'next/link';
+import confetti from 'canvas-confetti';
 import { Guest } from '@/lib/types';
 import '@/styles/self-checkin.css';
+
+// Audio chime function using Web Audio API (works natively on iOS and Android)
+function playSuccessChime() {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const ctx = new AudioContextClass();
+    
+    // Pleasant 3-tone arpeggio (C5 -> E5 -> G5)
+    const tones = [523.25, 659.25, 783.99];
+    tones.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + idx * 0.12);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime + idx * 0.12);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.12 + 0.35);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime + idx * 0.12);
+      osc.stop(ctx.currentTime + idx * 0.12 + 0.35);
+    });
+  } catch {
+    // Ignore audio autoplay restrictions gracefully
+  }
+}
 
 export default function SelfCheckinPage() {
   const [activeTab, setActiveTab] = useState<'search' | 'walkin'>('search');
@@ -12,17 +40,20 @@ export default function SelfCheckinPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
 
-  // Walk-in state
+  // Walk-in form state
   const [walkinName, setWalkinName] = useState('');
+  const [walkinCategory, setWalkinCategory] = useState('Tamu Undangan');
+  const [walkinPax, setWalkinPax] = useState('1');
+  const [walkinNotes, setWalkinNotes] = useState('');
 
-  // Status states
+  // Status & Success state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [alertInfo, setAlertInfo] = useState<{ type: 'warning' | 'error'; message: string } | null>(null);
   const [successData, setSuccessData] = useState<any>(null);
 
   const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Debounced search
+  // Debounced search logic
   useEffect(() => {
     if (activeTab !== 'search') return;
 
@@ -49,7 +80,7 @@ export default function SelfCheckinPage() {
       } finally {
         setIsSearching(false);
       }
-    }, 250);
+    }, 200);
 
     return () => {
       if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
@@ -58,7 +89,27 @@ export default function SelfCheckinPage() {
 
   const handleSelectGuest = (guest: Guest) => {
     setSelectedGuest(guest);
-    setAlertInfo(null);
+    if (guest.is_present) {
+      setAlertInfo({
+        type: 'warning',
+        message: `${guest.name} sudah tercatat hadir pada pukul ${guest.checked_in_at || 'sebelumnya'}.`,
+      });
+    } else {
+      setAlertInfo(null);
+    }
+  };
+
+  const fireConfetti = () => {
+    try {
+      confetti({
+        particleCount: 80,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#C5A55A', '#E8D5A3', '#8B7635', '#FAF6EE', '#D4AF37'],
+      });
+    } catch {
+      // ignore
+    }
   };
 
   const handleConfirmRegistered = async () => {
@@ -79,28 +130,30 @@ export default function SelfCheckinPage() {
       const res = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: selectedGuest.id, method: 'Mandiri' }),
+        body: JSON.stringify({ query: selectedGuest.id, method: 'Check-In Mandiri' }),
       });
       const data = await res.json();
 
       if (res.status === 200) {
         setSuccessData(data);
+        playSuccessChime();
+        fireConfetti();
       } else if (res.status === 409) {
         setAlertInfo({
           type: 'warning',
-          message: data.message || 'Tamu ini sudah melakukan check-in sebelumnya.',
+          message: data.message || 'Tamu ini sudah tercatat check-in sebelumnya.',
         });
       } else {
         setAlertInfo({
           type: 'error',
-          message: data.message || 'Terjadi kesalahan saat check-in.',
+          message: data.message || 'Terjadi kendala saat check-in. Silakan hubungi panitia.',
         });
       }
     } catch (err) {
       console.error('Checkin error:', err);
       setAlertInfo({
         type: 'error',
-        message: 'Koneksi ke server terputus. Silakan hubungi panitia.',
+        message: 'Koneksi ke server terputus. Silakan coba kembali atau hubungi panitia.',
       });
     } finally {
       setIsSubmitting(false);
@@ -119,28 +172,35 @@ export default function SelfCheckinPage() {
       const res = await fetch('/api/walkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, category: 'Tamu Tambahan', pax: 1 }),
+        body: JSON.stringify({
+          name: trimmed,
+          category: walkinCategory,
+          pax: parseInt(walkinPax, 10) || 1,
+          notes: walkinNotes.trim() || 'Check-In Mandiri (Walk-In)',
+        }),
       });
       const data = await res.json();
 
       if (res.status === 200) {
         setSuccessData(data);
+        playSuccessChime();
+        fireConfetti();
       } else if (res.status === 409) {
         setAlertInfo({
           type: 'warning',
-          message: data.message || 'Nama tamu ini sudah tercatat check-in sebelumnya.',
+          message: data.message || 'Nama tamu ini sudah pernah didaftarkan check-in.',
         });
       } else {
         setAlertInfo({
           type: 'error',
-          message: data.message || 'Gagal mendaftarkan tamu.',
+          message: data.message || 'Gagal mendaftarkan tamu baru.',
         });
       }
     } catch (err) {
       console.error('Walkin error:', err);
       setAlertInfo({
         type: 'error',
-        message: 'Koneksi ke server terputus. Silakan hubungi panitia.',
+        message: 'Koneksi ke server terputus. Silakan coba kembali atau hubungi panitia.',
       });
     } finally {
       setIsSubmitting(false);
@@ -154,197 +214,324 @@ export default function SelfCheckinPage() {
     setResults([]);
     setHasSearched(false);
     setWalkinName('');
+    setWalkinNotes('');
     setAlertInfo(null);
   };
 
   return (
     <div className="self-checkin-wrapper">
       <div className="self-container">
-        {/* Header */}
-        <div className="self-header">
-          <div className="wedding-badge">Buku Tamu Digital</div>
-          <h1 className="wedding-title">The Wedding of</h1>
-          <div className="wedding-names">Wildan &amp; Aisyah</div>
-          <div className="header-ornament">
-            <span className="dot"></span>
-            <span className="line"></span>
-            <span className="dot"></span>
+        {/* Header with Display-App Font styling */}
+        <header className="self-header">
+          <div className="self-badge">Buku Tamu Digital</div>
+          <h1 className="self-title-wedding">The Wedding of</h1>
+          <div className="self-title-names">
+            Wildan <span className="self-title-amp">&amp;</span> Aisyah
           </div>
-        </div>
-
-        {/* Success Screen */}
-        {successData ? (
-          <div className="success-card">
-            <div className="success-icon-box">
-              <span className="material-symbols-outlined success-icon">check_circle</span>
-            </div>
-            <h2 className="success-heading">Selamat Datang!</h2>
-            <p className="success-guest-name">{successData.guest?.name}</p>
-            <div className="success-meta-pills">
-              <span className="pill-id">ID: {successData.guest?.id}</span>
-              <span className="pill-cat">{successData.guest?.category}</span>
-            </div>
-            <div className="success-message-box">
-              <p>Kehadiran Anda telah berhasil dicatat ke sistem resepsi. Silakan menikmati hidangan dan acara.</p>
-            </div>
-            <button type="button" className="btn-done" onClick={handleReset}>
-              <span className="material-symbols-outlined">restart_alt</span>
-              Check-In Tamu Lainnya
-            </button>
+          <div className="self-divider">
+            <span className="self-divider-line"></span>
+            <span className="self-divider-diamond"></span>
+            <span className="self-divider-line"></span>
           </div>
-        ) : (
-          <div className="form-card">
-            {/* Tabs */}
-            <div className="tab-buttons">
-              <button
-                type="button"
-                className={`tab-btn ${activeTab === 'search' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('search');
-                  setAlertInfo(null);
-                }}
-              >
-                <span className="material-symbols-outlined">person_search</span>
-                Tamu Terdaftar
-              </button>
-              <button
-                type="button"
-                className={`tab-btn ${activeTab === 'walkin' ? 'active' : ''}`}
-                onClick={() => {
-                  setActiveTab('walkin');
-                  setAlertInfo(null);
-                }}
-              >
-                <span className="material-symbols-outlined">person_add</span>
-                Tamu Baru / Walk-In
-              </button>
-            </div>
+        </header>
 
-            {/* Alert Message */}
-            {alertInfo && (
-              <div className={`alert-box ${alertInfo.type}`}>
-                <span className="material-symbols-outlined alert-icon">
-                  {alertInfo.type === 'warning' ? 'warning' : 'error'}
-                </span>
-                <span>{alertInfo.message}</span>
+        {/* Main Card */}
+        <div className="self-card">
+          {successData ? (
+            /* Success Screen */
+            <div className="self-success-wrapper">
+              <div className="self-success-icon-box">✓</div>
+              <div className="self-success-heading">Selamat Datang</div>
+              <h2 className="self-success-subtitle">Terima Kasih Atas Kehadirannya</h2>
+              <div className="self-success-name">
+                {successData.guest?.name || 'Tamu Undangan'}
               </div>
-            )}
 
-            {/* Tab 1: Search Registered Guest */}
-            {activeTab === 'search' && (
-              <div className="tab-content">
-                <div className="input-group">
-                  <label htmlFor="self-search-input">Cari Nama Anda pada Daftar Undangan:</label>
-                  <div className="search-box">
-                    <span className="material-symbols-outlined search-icon">search</span>
-                    <input
-                      id="self-search-input"
-                      type="text"
-                      className="text-input"
-                      placeholder="Ketik minimal 2 huruf nama Anda..."
-                      value={query}
-                      onChange={(e) => setQuery(e.target.value)}
-                      autoComplete="off"
-                    />
-                    {isSearching && (
-                      <span className="material-symbols-outlined search-spinner">progress_activity</span>
+              <div className="self-success-info-card">
+                <div className="self-success-row">
+                  <span className="self-success-row-label">Nomor ID:</span>
+                  <span className="self-success-row-val">{successData.guest?.id || '-'}</span>
+                </div>
+                <div className="self-success-row">
+                  <span className="self-success-row-label">Kategori Undangan:</span>
+                  <span className="self-success-row-val">{successData.guest?.category || 'Tamu Undangan'}</span>
+                </div>
+                <div className="self-success-row">
+                  <span className="self-success-row-label">Jumlah Kehadiran:</span>
+                  <span className="self-success-row-val">{successData.guest?.pax || 1} Orang</span>
+                </div>
+                <div className="self-success-row">
+                  <span className="self-success-row-label">Waktu Check-In:</span>
+                  <span className="self-success-row-val">{successData.guest?.checked_in_at || 'Baru saja'}</span>
+                </div>
+              </div>
+
+              <p className="self-success-message">
+                Kehadiran Anda telah tercatat pada buku tamu resepsi kami. Selamat menikmati rangkaian acara dan hidangan yang telah kami sediakan.
+              </p>
+
+              <button type="button" className="self-btn-secondary" onClick={handleReset}>
+                <span className="text-lg">↻</span>
+                Check-In Tamu Lainnya
+              </button>
+            </div>
+          ) : (
+            /* Form / Search View */
+            <>
+              {/* Tab Navigation */}
+              <div className="self-tab-nav">
+                <button
+                  type="button"
+                  className={`self-tab-btn ${activeTab === 'search' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveTab('search');
+                    setAlertInfo(null);
+                  }}
+                >
+                  <span className="text-base">🔍</span>
+                  <span>Cari Nama Undangan</span>
+                </button>
+                <button
+                  type="button"
+                  className={`self-tab-btn ${activeTab === 'walkin' ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveTab('walkin');
+                    setAlertInfo(null);
+                  }}
+                >
+                  <span className="text-base">✍️</span>
+                  <span>Tamu Baru / Walk-In</span>
+                </button>
+              </div>
+
+              <div className="self-card-body">
+                {/* Alert Notification */}
+                {alertInfo && (
+                  <div className={`self-alert ${alertInfo.type}`}>
+                    <span className="self-alert-icon">
+                      {alertInfo.type === 'warning' ? '⚠️' : '⛔'}
+                    </span>
+                    <div>{alertInfo.message}</div>
+                  </div>
+                )}
+
+                {/* Tab 1: Search Registered Guest */}
+                {activeTab === 'search' && (
+                  <div>
+                    <div className="self-group">
+                      <label className="self-label" htmlFor="search-input">
+                        Ketik Nama Anda pada Daftar Undangan:
+                      </label>
+                      <div className="self-input-box">
+                        <span className="self-input-icon">🔍</span>
+                        <input
+                          id="search-input"
+                          type="text"
+                          className="self-input"
+                          placeholder="Contoh: Wildan, Ahmad, Rahmad..."
+                          value={query}
+                          onChange={(e) => setQuery(e.target.value)}
+                          autoComplete="off"
+                        />
+                        {query && !isSearching && (
+                          <button
+                            type="button"
+                            className="self-input-clear"
+                            onClick={() => {
+                              setQuery('');
+                              setResults([]);
+                              setSelectedGuest(null);
+                              setAlertInfo(null);
+                            }}
+                            title="Hapus pencarian"
+                          >
+                            ✕
+                          </button>
+                        )}
+                        {isSearching && <span className="self-input-spinner">⌛</span>}
+                      </div>
+                    </div>
+
+                    {/* Search Results List */}
+                    {results.length > 0 && (
+                      <div className="self-results-container">
+                        <div className="self-results-header">
+                          Ditemukan {results.length} Nama (Sentuh untuk Memilih):
+                        </div>
+                        {results.map((guest) => (
+                          <div
+                            key={guest.id}
+                            className={`self-result-card ${selectedGuest?.id === guest.id ? 'selected' : ''}`}
+                            onClick={() => handleSelectGuest(guest)}
+                          >
+                            <div>
+                              <div className="self-result-name">{guest.name}</div>
+                              <div className="self-result-meta">
+                                <span className="self-tag-category">{guest.category}</span>
+                                <span className="self-tag-id">ID: {guest.id}</span>
+                              </div>
+                            </div>
+                            <div>
+                              {guest.is_present ? (
+                                <span className="self-status-pill present">✓ Sudah Hadir</span>
+                              ) : (
+                                <span className="self-status-pill ready">Pilih</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Empty Search Result */}
+                    {hasSearched && results.length === 0 && !isSearching && (
+                      <div className="self-empty">
+                        <p className="self-empty-text">
+                          Nama &quot;<strong>{query}</strong>&quot; tidak ditemukan pada daftar undangan.
+                        </p>
+                        <button
+                          type="button"
+                          className="self-btn-link"
+                          onClick={() => {
+                            setActiveTab('walkin');
+                            setWalkinName(query);
+                            setAlertInfo(null);
+                          }}
+                        >
+                          Daftar Sekarang Sebagai Tamu Baru / Walk-In →
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Confirmation Section when Guest is Selected */}
+                    {selectedGuest && !selectedGuest.is_present && (
+                      <div className="self-confirm-box">
+                        <div className="self-confirm-subtitle">Konfirmasi Kehadiran Tamu</div>
+                        <div className="self-confirm-name">{selectedGuest.name}</div>
+                        <div className="self-confirm-meta">
+                          Kategori: <strong>{selectedGuest.category}</strong> • ID Undangan: <strong>{selectedGuest.id}</strong>
+                        </div>
+                        <button
+                          type="button"
+                          className="self-btn-primary"
+                          disabled={isSubmitting}
+                          onClick={handleConfirmRegistered}
+                        >
+                          {isSubmitting ? (
+                            <span>Memproses Kehadiran...</span>
+                          ) : (
+                            <>
+                              <span>✨</span>
+                              <span>Konfirmasi Kehadiran Saya</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
-                </div>
+                )}
 
-                {/* Search Results */}
-                {results.length > 0 && (
-                  <div className="results-list">
-                    <div className="results-caption">Pilih nama Anda di bawah:</div>
-                    {results.map((guest) => (
-                      <div
-                        key={guest.id}
-                        className={`result-item ${selectedGuest?.id === guest.id ? 'selected' : ''}`}
-                        onClick={() => handleSelectGuest(guest)}
+                {/* Tab 2: Walk-In / New Guest */}
+                {activeTab === 'walkin' && (
+                  <form onSubmit={handleConfirmWalkin}>
+                    <div className="self-group">
+                      <label className="self-label" htmlFor="walkin-name">
+                        Nama Lengkap Tamu: <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        id="walkin-name"
+                        type="text"
+                        className="self-input"
+                        style={{ paddingLeft: '16px' }}
+                        placeholder="Masukkan nama lengkap Anda..."
+                        value={walkinName}
+                        onChange={(e) => setWalkinName(e.target.value)}
+                        required
+                        autoComplete="name"
+                      />
+                    </div>
+
+                    <div className="self-group">
+                      <label className="self-label" htmlFor="walkin-cat">
+                        Kategori / Hubungan:
+                      </label>
+                      <select
+                        id="walkin-cat"
+                        className="self-select"
+                        value={walkinCategory}
+                        onChange={(e) => setWalkinCategory(e.target.value)}
                       >
-                        <div className="result-info">
-                          <span className="result-name">{guest.name}</span>
-                          <span className="result-sub">
-                            {guest.category} • ID: {guest.id}
-                          </span>
-                        </div>
-                        <div className="result-status">
-                          {guest.is_present ? (
-                            <span className="badge-present">Sudah Hadir</span>
-                          ) : (
-                            <span className="badge-ready">Pilih</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                        <option value="Tamu Undangan">Tamu Undangan</option>
+                        <option value="Keluarga">Keluarga</option>
+                        <option value="Teman Wildan">Teman Wildan</option>
+                        <option value="Teman Aisyah">Teman Aisyah</option>
+                        <option value="Rekan Kerja">Rekan Kerja</option>
+                        <option value="Tetangga / Warga">Tetangga / Warga</option>
+                        <option value="Tamu Kehormatan">Tamu Kehormatan</option>
+                      </select>
+                    </div>
 
-                {hasSearched && results.length === 0 && (
-                  <div className="empty-results">
-                    <p>Nama tidak ditemukan di daftar undangan.</p>
-                    <button
-                      type="button"
-                      className="link-btn"
-                      onClick={() => {
-                        setActiveTab('walkin');
-                        setWalkinName(query);
-                      }}
-                    >
-                      Daftar sebagai Tamu Baru &rarr;
-                    </button>
-                  </div>
-                )}
+                    <div className="self-group">
+                      <label className="self-label" htmlFor="walkin-pax">
+                        Jumlah Orang yang Hadir:
+                      </label>
+                      <select
+                        id="walkin-pax"
+                        className="self-select"
+                        value={walkinPax}
+                        onChange={(e) => setWalkinPax(e.target.value)}
+                      >
+                        <option value="1">1 Orang</option>
+                        <option value="2">2 Orang</option>
+                        <option value="3">3 Orang</option>
+                        <option value="4">4 Orang</option>
+                        <option value="5">5+ Orang (Rombongan)</option>
+                      </select>
+                    </div>
 
-                {/* Selected Guest Confirmation */}
-                {selectedGuest && (
-                  <div className="selected-card">
-                    <div className="selected-title">Konfirmasi Kehadiran:</div>
-                    <div className="selected-name">{selectedGuest.name}</div>
-                    <div className="selected-meta">{selectedGuest.category} • ID: {selectedGuest.id}</div>
+                    <div className="self-group">
+                      <label className="self-label" htmlFor="walkin-notes">
+                        Ucapan / Doa Singkat (Opsional):
+                      </label>
+                      <input
+                        id="walkin-notes"
+                        type="text"
+                        className="self-input"
+                        style={{ paddingLeft: '16px' }}
+                        placeholder="Semoga sakinah mawaddah warahmah..."
+                        value={walkinNotes}
+                        onChange={(e) => setWalkinNotes(e.target.value)}
+                      />
+                    </div>
+
                     <button
-                      type="button"
-                      className="btn-submit"
-                      disabled={isSubmitting || selectedGuest.is_present}
-                      onClick={handleConfirmRegistered}
+                      type="submit"
+                      className="self-btn-primary"
+                      disabled={isSubmitting || !walkinName.trim()}
                     >
-                      {isSubmitting ? 'Memproses...' : 'Konfirmasi Saya Hadir'}
+                      {isSubmitting ? (
+                        <span>Menyimpan ke Buku Tamu...</span>
+                      ) : (
+                        <>
+                          <span>✨</span>
+                          <span>Simpan &amp; Check-In Kehadiran</span>
+                        </>
+                      )}
                     </button>
-                  </div>
+                  </form>
                 )}
               </div>
-            )}
-
-            {/* Tab 2: Walk-In / New Guest */}
-            {activeTab === 'walkin' && (
-              <form className="tab-content" onSubmit={handleConfirmWalkin}>
-                <div className="input-group">
-                  <label htmlFor="self-walkin-input">Nama Lengkap Tamu:</label>
-                  <input
-                    id="self-walkin-input"
-                    type="text"
-                    className="text-input"
-                    placeholder="Masukkan nama lengkap Anda..."
-                    value={walkinName}
-                    onChange={(e) => setWalkinName(e.target.value)}
-                    required
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="btn-submit"
-                  disabled={isSubmitting || !walkinName.trim()}
-                >
-                  {isSubmitting ? 'Menyimpan...' : 'Check-In Sebagai Tamu Baru'}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-
-        <div className="self-footer">
-          <span>Resepsi Pernikahan Wildan &amp; Aisyah</span>
+            </>
+          )}
         </div>
+
+        {/* Footer Navigation */}
+        <footer className="self-footer">
+          <p>The Wedding of Wildan &amp; Aisyah</p>
+          <Link href="/" className="self-footer-link">
+            ← Kembali ke Menu Utama
+          </Link>
+        </footer>
       </div>
     </div>
   );
