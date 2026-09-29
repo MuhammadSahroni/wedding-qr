@@ -5,6 +5,7 @@
   "scripts": {
     "build": "cd nextjsapp && npm install && npm run build:worker",
     "build:worker": "cd nextjsapp && npm run build:worker",
+    "deploy": "cd nextjsapp && npx wrangler deploy",
     "dev": "cd nextjsapp && npm run dev",
     "start": "cd nextjsapp && npm run start"
   },
