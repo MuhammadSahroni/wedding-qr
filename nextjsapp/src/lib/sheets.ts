@@ -69,13 +69,20 @@ export async function initDatabase(): Promise<void> {
     }
 
     googleSheet = sheet;
+    
+    // Ensure header row is set before calling getRows
+    try {
+      await sheet.loadHeaderRow();
+    } catch {
+      await sheet.setHeaderRow(['No', 'ID Tamu', 'Nama Tamu', 'Kategori', 'QR Payload', 'Status Hadir', 'Waktu Hadir', 'Metode Checkin', 'Pax', 'Catatan']);
+    }
+
     const rows = await sheet.getRows();
 
     if (rows.length === 0) {
       console.log('[Sheets] Empty sheet detected, loading local guests and seeding to Google Sheet...');
       initializeFromLocalFallback();
-      // Asynchronously seed initial data if needed
-      seedInitialRows(sheet, guestsCache).catch(console.error);
+      await seedInitialRows(sheet, guestsCache);
     } else {
       rowMap.clear();
       guestsCache = rows.map((r, i) => {
@@ -234,13 +241,17 @@ export async function checkin(query: string, method = 'QR Scan'): Promise<{ stat
   guest.checked_in_at = now;
   guest.checkin_method = method;
 
-  // Update in Google Sheet asynchronously
+  // Update in Google Sheet
   const sheetRow = rowMap.get(guest.id);
   if (sheetRow) {
     sheetRow.set('Status Hadir', 'HADIR');
     sheetRow.set('Waktu Hadir', now);
     sheetRow.set('Metode Checkin', method);
-    sheetRow.save().catch(err => console.error('[Sheets] Error updating row:', err));
+    try {
+      await sheetRow.save();
+    } catch (err) {
+      console.error('[Sheets] Error updating row:', err);
+    }
   }
 
   const stats = await getStats();
@@ -269,7 +280,11 @@ export async function undoCheckin(id: string): Promise<{ status: 'success' | 'no
     sheetRow.set('Status Hadir', 'BELUM');
     sheetRow.set('Waktu Hadir', '');
     sheetRow.set('Metode Checkin', '');
-    sheetRow.save().catch(err => console.error('[Sheets] Error undoing row:', err));
+    try {
+      await sheetRow.save();
+    } catch (err) {
+      console.error('[Sheets] Error undoing row:', err);
+    }
   }
 
   const stats = await getStats();
@@ -318,20 +333,23 @@ export async function addWalkin(name: string, category = 'Tamu Tambahan', pax = 
 
   // Append row to Google Sheets
   if (googleSheet) {
-    googleSheet.addRow({
-      'No': newGuest.no,
-      'ID Tamu': newGuest.id,
-      'Nama Tamu': newGuest.name,
-      'Kategori': newGuest.category,
-      'QR Payload': newGuest.qr_payload,
-      'Status Hadir': 'HADIR',
-      'Waktu Hadir': now,
-      'Metode Checkin': 'Mandiri',
-      'Pax': newGuest.pax,
-      'Catatan': newGuest.notes,
-    }).then((createdRow: GoogleSpreadsheetRow) => {
+    try {
+      const createdRow = await googleSheet.addRow({
+        'No': newGuest.no,
+        'ID Tamu': newGuest.id,
+        'Nama Tamu': newGuest.name,
+        'Kategori': newGuest.category,
+        'QR Payload': newGuest.qr_payload,
+        'Status Hadir': 'HADIR',
+        'Waktu Hadir': now,
+        'Metode Checkin': 'Mandiri',
+        'Pax': newGuest.pax,
+        'Catatan': newGuest.notes,
+      });
       rowMap.set(newId, createdRow);
-    }).catch((err: any) => console.error('[Sheets] Error adding walkin row:', err));
+    } catch (err: any) {
+      console.error('[Sheets] Error adding walkin row:', err);
+    }
   }
 
   const stats = await getStats();
