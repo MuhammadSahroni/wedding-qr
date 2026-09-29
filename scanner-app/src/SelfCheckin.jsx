@@ -4,7 +4,7 @@ import './SelfCheckin.css';
 
 export default function SelfCheckin() {
   const [activeTab, setActiveTab] = useState('search'); // 'search' | 'walkin'
-  
+
   // Search state
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
@@ -189,10 +189,10 @@ export default function SelfCheckin() {
                 <span className="self-detail-val">
                   {successData.guest?.checked_in_at
                     ? new Date(successData.guest.checked_in_at).toLocaleTimeString('id-ID', {
-                        hour: '2-digit',
-                        minute: '2-digit',
-                        second: '2-digit',
-                      }) + ' WIB'
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    }) + ' WIB'
                     : 'Baru saja'}
                 </span>
               </div>
@@ -289,7 +289,7 @@ export default function SelfCheckin() {
                       )}
                     </div>
                     <p className="self-hint">
-                      Ketik minimal 2 huruf nama Anda untuk melihat rekomendasi dari daftar undangan resmi.
+                      Ketik minimal 2 huruf nama Anda untuk melihat daftar undangan.
                     </p>
                   </div>
 
@@ -313,7 +313,6 @@ export default function SelfCheckin() {
                             <h4>{g.name}</h4>
                             <div className="self-result-sub">
                               <span className="self-badge-id">{g.id}</span>
-                              {g.category && <span className="self-badge-cat">{g.category}</span>}
                             </div>
                           </div>
                           {g.is_present ? (
@@ -331,7 +330,7 @@ export default function SelfCheckin() {
                   {/* Empty state when searching but no results */}
                   {!isSearching && hasSearched && results.length === 0 && (
                     <div className="self-empty-search">
-                      <p>Nama <strong>"{query}"</strong> tidak ditemukan dalam daftar undangan resmi.</p>
+                      <p>Nama <strong>"{query}"</strong> tidak ditemukan dalam daftar undangan.</p>
                       <button
                         type="button"
                         className="self-btn-link"
@@ -340,7 +339,7 @@ export default function SelfCheckin() {
                           setActiveTab('walkin');
                         }}
                       >
-                        👉 Masuk sebagai Tamu Baru (Walk-in)
+                        Masuk sebagai Tamu Baru (Walk-in)
                       </button>
                     </div>
                   )}
@@ -401,7 +400,7 @@ export default function SelfCheckin() {
                       />
                     </div>
                     <p className="self-hint">
-                      Fitur ini untuk tamu tambahan yang belum terdaftar pada daftar 505 undangan resmi.
+                      Silahkan isi buku tamu dengan nama anda/keluarga.
                     </p>
                   </div>
 

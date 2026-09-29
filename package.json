@@ -16,9 +16,21 @@
     "build:display": "cd display-app && npm run build",
     "build": "npm run build:scanner && npm run build:display",
     "build:all": "npm run install:all && npm run build",
+    "next:dev": "cd nextjsapp && npm run dev",
+    "next:build": "cd nextjsapp && npm run build",
+    "next:start": "cd nextjsapp && npm run start",
     "start:prod": "node server/server.js"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "dependencies": {
+    "canvas-confetti": "^1.9.4",
+    "google-auth-library": "^11.1.0",
+    "google-spreadsheet": "^5.3.0",
+    "html5-qrcode": "^2.3.8",
+    "lucide-react": "^1.48.0",
+    "pusher": "^5.3.4",
+    "pusher-js": "^8.6.0"
   }
 }
