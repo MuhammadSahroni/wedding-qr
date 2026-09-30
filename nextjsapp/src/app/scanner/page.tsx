@@ -404,30 +404,33 @@ export default function ScannerPage() {
           <span className="subtitle">Guest Check-In System</span>
         </div>
         <div className="header-right">
-          <button
-            type="button"
-            className="btn-qr-meja"
-            style={{ background: 'linear-gradient(135deg, #8B7635, #C5A55A)', color: '#fff', borderColor: '#8B7635' }}
-            onClick={() => setShowWalkinModal(true)}
-            title="Tambah Tamu Baru (Walk-In) Tanpa ID Tamu"
-          >
-            <span className="material-symbols-outlined">person_add</span>
-            <span>+ Tamu Walk-In</span>
-          </button>
-          <button
-            type="button"
-            className="btn-qr-meja"
-            onClick={() => setShowMejaQrModal(true)}
-            title="Tampilkan QR Code Meja untuk Tamu Check-In Mandiri"
-          >
-            <span className="material-symbols-outlined">qr_code_2</span>
-            <span>QR Self Check-in</span>
-          </button>
-          <div className="connection-badge">
-            <span className={`status-indicator ${isOnline ? 'connected' : 'disconnected'}`}></span>
-            <span>{isOnline ? 'Online' : 'Offline'}</span>
+          <div className="header-actions-group">
+            <button
+              type="button"
+              className="btn-header-action btn-walkin-action"
+              onClick={() => setShowWalkinModal(true)}
+              title="Tambah Tamu Baru (Walk-In) Tanpa ID Tamu"
+            >
+              <span className="material-symbols-outlined">person_add</span>
+              <span>+ Tamu Walk-In</span>
+            </button>
+            <button
+              type="button"
+              className="btn-header-action btn-qr-action"
+              onClick={() => setShowMejaQrModal(true)}
+              title="Tampilkan QR Code Meja untuk Tamu Check-In Mandiri"
+            >
+              <span className="material-symbols-outlined">qr_code_2</span>
+              <span>QR Self Check-in</span>
+            </button>
           </div>
-          <div className="header-clock">{clock}</div>
+          <div className="header-status-group">
+            <div className="connection-badge">
+              <span className={`status-indicator ${isOnline ? 'connected' : 'disconnected'}`}></span>
+              <span>{isOnline ? 'Online' : 'Offline'}</span>
+            </div>
+            <div className="header-clock">{clock}</div>
+          </div>
         </div>
       </header>
 

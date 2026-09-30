@@ -1444,20 +1444,53 @@ body {
 
   .header-right {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
     width: 100%;
     gap: 10px;
   }
 
+  .header-actions-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .btn-header-action {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.75rem;
+    border-radius: 12px;
+    gap: 5px;
+    width: 100%;
+  }
+
+  .btn-header-action .material-symbols-outlined {
+    font-size: 16px;
+  }
+
+  .header-status-group {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0 2px;
+  }
+
   .connection-badge {
-    padding: 4px 10px;
+    height: 28px;
+    padding: 0 10px;
     font-size: 0.72rem;
+    box-sizing: border-box;
   }
 
   .header-clock {
-    font-size: 0.92rem;
-    padding: 4px 10px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    font-size: 0.88rem;
+    padding: 0 10px;
+    box-sizing: border-box;
   }
 
   .main-content-grid {
@@ -1622,14 +1655,28 @@ body {
     font-size: 1.05rem;
   }
 
+  .btn-header-action {
+    height: 32px;
+    padding: 0 6px;
+    font-size: 0.70rem;
+    gap: 4px;
+    border-radius: 10px;
+  }
+
+  .btn-header-action .material-symbols-outlined {
+    font-size: 14px;
+  }
+
   .header-clock {
-    font-size: 0.85rem;
-    padding: 3px 8px;
+    font-size: 0.82rem;
+    padding: 0 8px;
+    height: 26px;
   }
 
   .connection-badge {
     font-size: 0.68rem;
-    padding: 3px 8px;
+    padding: 0 8px;
+    height: 26px;
   }
 
   .app-card {
@@ -1691,30 +1738,68 @@ body {
 }
 /* App-level styles (overrides & additions) */
 
-/* Button Header QR Meja */
-.btn-qr-meja {
+/* Header Action Buttons & Groups */
+.header-actions-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-header-action {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  background: linear-gradient(135deg, #C5A55A 0%, #8B7635 100%);
-  color: #FFFFFF;
-  border: none;
-  padding: 6px 14px;
+  height: 34px;
+  padding: 0 14px;
   border-radius: 20px;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(197, 165, 90, 0.3);
+  border: 1px solid rgba(197, 165, 90, 0.3);
   transition: all 0.2s ease;
+  box-sizing: border-box;
+  text-decoration: none;
 }
 
-.btn-qr-meja:hover {
+.btn-walkin-action {
+  background: linear-gradient(135deg, #8B7635 0%, #C5A55A 100%);
+  color: #FFFFFF;
+  border-color: #8B7635;
+  box-shadow: 0 2px 8px rgba(139, 118, 53, 0.3);
+}
+
+.btn-walkin-action:hover {
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(197, 165, 90, 0.45);
+  box-shadow: 0 4px 12px rgba(139, 118, 53, 0.45);
+  background: linear-gradient(135deg, #9C853C 0%, #D4B466 100%);
 }
 
-.btn-qr-meja .material-symbols-outlined {
-  font-size: 18px;
+.btn-qr-action {
+  background: rgba(197, 165, 90, 0.15);
+  color: var(--gold-light);
+  border-color: rgba(197, 165, 90, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-qr-action:hover {
+  transform: translateY(-1px);
+  background: rgba(197, 165, 90, 0.28);
+  border-color: var(--gold-primary);
+  color: #FFFFFF;
+  box-shadow: 0 4px 12px rgba(197, 165, 90, 0.3);
+}
+
+.btn-header-action .material-symbols-outlined {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.header-status-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Checkin Method Badges */
