@@ -1,5 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 
 export const getStats = query({
   args: {},
@@ -155,7 +156,16 @@ export const checkin = mutation({
       };
     }
 
+    const checkinMethod = args.method ?? "QR Scan";
+
     if (target.is_present) {
+      // Sync to Google Sheet even on duplicate checkin in case it was missed
+      await ctx.scheduler.runAfter(0, internal.sheetsSync.syncCheckinToSheet, {
+        guestId: target.id,
+        name: target.name,
+        method: target.checkin_method || checkinMethod,
+        timestamp: target.checked_in_at || new Date().toISOString(),
+      });
       return {
         status: "duplicate",
         message: `${target.name} sudah tercatat hadir pada ${target.checked_in_at || "sebelumnya"}.`,
@@ -164,7 +174,6 @@ export const checkin = mutation({
     }
 
     const now = new Date().toISOString();
-    const checkinMethod = args.method ?? "QR Scan";
 
     // Update guest
     await ctx.db.patch(target._id, {
@@ -191,6 +200,14 @@ export const checkin = mutation({
       timestamp: Date.now(),
     });
 
+    // Sync directly to Google Spreadsheet from Convex Cloud!
+    await ctx.scheduler.runAfter(0, internal.sheetsSync.syncCheckinToSheet, {
+      guestId: target.id,
+      name: target.name,
+      method: checkinMethod,
+      timestamp: now,
+    });
+
     return {
       status: "success",
       message: `Selamat datang, ${target.name}!`,
@@ -215,6 +232,11 @@ export const undoCheckin = mutation({
       is_present: false,
       checked_in_at: undefined,
       checkin_method: undefined,
+    });
+
+    // Sync undo directly to Google Spreadsheet from Convex Cloud!
+    await ctx.scheduler.runAfter(0, internal.sheetsSync.syncUndoToSheet, {
+      guestId: target.id,
     });
 
     return {
@@ -282,6 +304,18 @@ export const addWalkin = mutation({
       checked_in_at: now,
       method: method,
       timestamp: Date.now(),
+    });
+
+    // Sync walk-in directly to Google Spreadsheet from Convex Cloud!
+    await ctx.scheduler.runAfter(0, internal.sheetsSync.syncWalkinToSheet, {
+      no: newGuest.no,
+      id: newId,
+      name: trimmed,
+      category: newGuest.category,
+      pax: newGuest.pax,
+      notes: newGuest.notes,
+      method: method,
+      timestamp: now,
     });
 
     return {

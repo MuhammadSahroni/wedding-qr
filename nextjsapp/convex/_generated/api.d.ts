@@ -9,6 +9,7 @@
  */
 
 import type * as guests from "../guests.js";
+import type * as sheetsSync from "../sheetsSync.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +19,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   guests: typeof guests;
+  sheetsSync: typeof sheetsSync;
 }>;
 
 /**
