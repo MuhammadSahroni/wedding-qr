@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import Link from 'next/link';
 import confetti from 'canvas-confetti';
 import { Guest } from '@/lib/types';
 import '@/styles/self-checkin.css';
@@ -533,13 +532,9 @@ export default function SelfCheckinPage() {
           )}
         </div>
 
-        {/* Footer Navigation */}
+        {/* Footer */}
         <footer className="self-footer">
           <p>The Wedding of Wildan &amp; Aisyah</p>
-          <Link href="/" className="self-footer-link inline-flex items-center gap-1">
-            <span className="material-symbols-outlined" style={{ fontSize: '18px' }}>arrow_back</span>
-            <span>Kembali ke Menu Utama</span>
-          </Link>
         </footer>
       </div>
     </div>
