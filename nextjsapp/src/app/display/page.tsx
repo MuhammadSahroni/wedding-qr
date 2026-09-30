@@ -184,16 +184,6 @@ export default function DisplayPage() {
     }));
   }, [isGreeting, greetingKey]);
 
-  // Format Time
-  const formatTime = (isoString?: string | null) => {
-    if (!isoString) return '';
-    return new Date(isoString).toLocaleTimeString('id-ID', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    });
-  };
-
   return (
     <div className="display-container" onClick={handleManualUnlock}>
       {/* Animated Background */}
@@ -307,10 +297,9 @@ export default function DisplayPage() {
               <div className="greeting-welcome">Selamat Datang</div>
               <div className="greeting-divider" />
               <div className="greeting-name">{currentGuest.name}</div>
-              <div className="greeting-id">{currentGuest.category ? `${currentGuest.category} • ` : ''}{currentGuest.id}</div>
-              <div className="greeting-time">
-                Tercatat Hadir: {formatTime(currentGuest.checked_in_at)}
-              </div>
+              {currentGuest.id && (
+                <div className="greeting-id">{currentGuest.id}</div>
+              )}
             </div>
 
             {/* Progress bar */}
