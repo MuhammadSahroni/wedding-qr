@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import Link from 'next/link';
 import confetti from 'canvas-confetti';
 import { Guest } from '@/lib/types';
@@ -35,10 +37,20 @@ function playSuccessChime() {
 export default function SelfCheckinPage() {
   const [activeTab, setActiveTab] = useState<'search' | 'walkin'>('search');
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Guest[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
+
+  // Convex Reactive Hooks
+  const searchResultsData = useQuery(api.guests.search, { query });
+  const checkinMutation = useMutation(api.guests.checkin);
+  const walkinMutation = useMutation(api.guests.addWalkin);
+
+  const results: Guest[] = useMemo(() => {
+    if (searchResultsData) return searchResultsData as any;
+    return [];
+  }, [searchResultsData]);
+
+  const isSearching = query.trim().length >= 2 && searchResultsData === undefined;
+  const hasSearched = query.trim().length >= 2 && searchResultsData !== undefined;
 
   // Walk-in form state
   const [walkinName, setWalkinName] = useState('');
@@ -50,42 +62,6 @@ export default function SelfCheckinPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [alertInfo, setAlertInfo] = useState<{ type: 'warning' | 'error'; message: string } | null>(null);
   const [successData, setSuccessData] = useState<any>(null);
-
-  const searchTimerRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Debounced search logic
-  useEffect(() => {
-    if (activeTab !== 'search') return;
-
-    const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setResults([]);
-      setHasSearched(false);
-      return;
-    }
-
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-
-    setIsSearching(true);
-    searchTimerRef.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
-        if (res.ok) {
-          const data: Guest[] = await res.json();
-          setResults(data || []);
-          setHasSearched(true);
-        }
-      } catch (err) {
-        console.error('Search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 200);
-
-    return () => {
-      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    };
-  }, [query, activeTab]);
 
   const handleSelectGuest = (guest: Guest) => {
     setSelectedGuest(guest);
@@ -127,18 +103,16 @@ export default function SelfCheckinPage() {
     setAlertInfo(null);
 
     try {
-      const res = await fetch('/api/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: selectedGuest.id, method: 'Check-In Mandiri' }),
+      const data = await checkinMutation({
+        query: selectedGuest.id,
+        method: 'Check-In Mandiri',
       });
-      const data = await res.json();
 
-      if (res.status === 200) {
+      if (data.status === 'success') {
         setSuccessData(data);
         playSuccessChime();
         fireConfetti();
-      } else if (res.status === 409) {
+      } else if (data.status === 'duplicate') {
         setAlertInfo({
           type: 'warning',
           message: data.message || 'Tamu ini sudah tercatat check-in sebelumnya.',
@@ -169,23 +143,18 @@ export default function SelfCheckinPage() {
     setAlertInfo(null);
 
     try {
-      const res = await fetch('/api/walkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: trimmed,
-          category: walkinCategory,
-          pax: parseInt(walkinPax, 10) || 1,
-          notes: walkinNotes.trim() || 'Check-In Mandiri (Walk-In)',
-        }),
+      const data = await walkinMutation({
+        name: trimmed,
+        category: walkinCategory,
+        pax: parseInt(walkinPax, 10) || 1,
+        notes: walkinNotes.trim() || 'Check-In Mandiri (Walk-In)',
       });
-      const data = await res.json();
 
-      if (res.status === 200) {
+      if (data.status === 'success') {
         setSuccessData(data);
         playSuccessChime();
         fireConfetti();
-      } else if (res.status === 409) {
+      } else if (data.status === 'duplicate') {
         setAlertInfo({
           type: 'warning',
           message: data.message || 'Nama tamu ini sudah pernah didaftarkan check-in.',
@@ -193,7 +162,7 @@ export default function SelfCheckinPage() {
       } else {
         setAlertInfo({
           type: 'error',
-          message: data.message || 'Gagal mendaftarkan tamu baru.',
+          message: 'Gagal mendaftarkan tamu baru.',
         });
       }
     } catch (err) {
@@ -211,8 +180,6 @@ export default function SelfCheckinPage() {
     setSuccessData(null);
     setSelectedGuest(null);
     setQuery('');
-    setResults([]);
-    setHasSearched(false);
     setWalkinName('');
     setWalkinNotes('');
     setAlertInfo(null);
@@ -341,7 +308,6 @@ export default function SelfCheckinPage() {
                             className="self-input-clear"
                             onClick={() => {
                               setQuery('');
-                              setResults([]);
                               setSelectedGuest(null);
                               setAlertInfo(null);
                             }}

@@ -1,38 +1,67 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useQuery, useMutation } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { Html5Qrcode } from 'html5-qrcode';
-import { getPusherClient } from '@/lib/pusher-client';
 import { playSuccess, playDuplicate, playError, initAudio } from '@/lib/audio-scanner';
 import { Guest, Stats } from '@/lib/types';
 import '@/styles/scanner.css';
 
 export default function ScannerPage() {
-  const [stats, setStats] = useState<Stats>({ total: 0, present: 0, absent: 0, percentage: 0 });
+  // Convex Reactive Data
+  const convexStats = useQuery(api.guests.getStats);
+  const convexRecent = useQuery(api.guests.getRecentCheckins, { limit: 10 });
+  const checkinMutation = useMutation(api.guests.checkin);
+  const undoMutation = useMutation(api.guests.undoCheckin);
+
   const [scanResult, setScanResult] = useState<{ type: 'success' | 'duplicate' | 'error'; guest: Guest | null; message: string } | null>(null);
   const [lastGuest, setLastGuest] = useState<Guest | null>(null);
-  const [recentCheckins, setRecentCheckins] = useState<Guest[]>([]);
   const [cameraActive, setCameraActive] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<Guest[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
   const [clock, setClock] = useState('');
-  const [isOnline, setIsOnline] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [confirmGuest, setConfirmGuest] = useState<Guest | null>(null);
   const [successModalGuest, setSuccessModalGuest] = useState<Guest | null>(null);
   const [showMejaQrModal, setShowMejaQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Reactive search from Convex
+  const searchResultsData = useQuery(api.guests.search, { query: searchQuery });
+  const searchResults: Guest[] = useMemo(() => {
+    if (searchResultsData) return searchResultsData as any;
+    return [];
+  }, [searchResultsData]);
+  const isSearching = searchQuery.trim().length >= 2 && searchResultsData === undefined;
+
+  const stats: Stats = useMemo(() => {
+    if (convexStats) return convexStats;
+    return { total: 957, present: 0, absent: 957, percentage: 0 };
+  }, [convexStats]);
+
+  const recentCheckins: Guest[] = useMemo(() => {
+    if (convexRecent) return convexRecent as any;
+    return [];
+  }, [convexRecent]);
+
+  // Keep lastGuest updated from recentCheckins
+  useEffect(() => {
+    if (recentCheckins.length > 0 && !lastGuest) {
+      setLastGuest(recentCheckins[0]);
+    }
+  }, [recentCheckins, lastGuest]);
+
+  const isOnline = convexStats !== undefined;
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
   const scanCooldownRef = useRef(false);
   const resultTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isStartingCameraRef = useRef(false);
 
   // Clock
   useEffect(() => {
+    initAudio();
     const updateClock = () => {
       const now = new Date();
       setClock(now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
@@ -41,70 +70,6 @@ export default function ScannerPage() {
     const interval = setInterval(updateClock, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Fetch recent check-ins
-  const refreshRecent = useCallback(async () => {
-    try {
-      const res = await fetch('/api/guests?filter=present');
-      if (res.ok) {
-        const data: Guest[] = await res.json();
-        const sorted = data.sort((a, b) => new Date(b.checked_in_at || 0).getTime() - new Date(a.checked_in_at || 0).getTime());
-        setRecentCheckins(sorted.slice(0, 10));
-        if (sorted.length > 0) {
-          setLastGuest(sorted[0]);
-        }
-      }
-    } catch (e) {
-      console.error('Failed to fetch recent:', e);
-    }
-  }, []);
-
-  // Fetch Stats
-  const refreshStats = useCallback(async () => {
-    try {
-      const res = await fetch('/api/stats');
-      if (res.ok) {
-        const data: Stats = await res.json();
-        setStats(data);
-      }
-    } catch (e) {
-      console.error('Failed to fetch stats:', e);
-    }
-  }, []);
-
-  // Initial Data & Pusher Realtime
-  useEffect(() => {
-    initAudio();
-    refreshStats();
-    refreshRecent();
-
-    const pusher = getPusherClient();
-    if (pusher) {
-      const channel = pusher.subscribe('wedding-checkin');
-
-      channel.bind('guest:checkin', (data: { guest: Guest; stats: Stats }) => {
-        if (data.stats) setStats(data.stats);
-        refreshRecent();
-      });
-
-      channel.bind('guest:undo', (data: { guest: Guest; stats: Stats }) => {
-        if (data.stats) setStats(data.stats);
-        refreshRecent();
-      });
-
-      channel.bind('stats:update', (newStats: Stats) => {
-        setStats(newStats);
-      });
-
-      pusher.connection.bind('connected', () => setIsOnline(true));
-      pusher.connection.bind('disconnected', () => setIsOnline(false));
-
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-      };
-    }
-  }, [refreshRecent, refreshStats]);
 
   // Prompt Confirmation before Check-In
   const promptCheckinConfirmation = useCallback((guest: Guest) => {
@@ -115,7 +80,7 @@ export default function ScannerPage() {
     setConfirmGuest(guest);
   }, []);
 
-  // Process Camera QR scan result
+  // Process Camera QR scan result via Convex mutation
   const processScan = useCallback(async (rawText: string) => {
     if (isProcessing || scanCooldownRef.current) return;
     if (!rawText || !rawText.trim()) return;
@@ -125,42 +90,34 @@ export default function ScannerPage() {
     scanCooldownRef.current = true;
 
     try {
-      const res = await fetch('/api/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: trimmed, method: 'QR Scan' }),
-      });
+      const res = await checkinMutation({ query: trimmed, method: 'QR Scan' });
 
-      const data = await res.json();
-
-      if (res.status === 200) {
+      if (res.status === 'success') {
         playSuccess();
-        const guestData: Guest = data.guest;
+        const guestData = res.guest as Guest;
         setSuccessModalGuest(guestData);
         setScanResult({
           type: 'success',
           guest: guestData,
-          message: data.message || 'Scan QR Berhasil',
+          message: res.message || 'Scan QR Berhasil',
         });
         setLastGuest(guestData);
-        if (data.stats) setStats(data.stats);
-        refreshRecent();
-      } else if (res.status === 409) {
+      } else if (res.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
         setScanResult({
           type: 'duplicate',
-          guest: data.guest,
-          message: data.message || 'Tamu sudah melakukan check-in sebelumnya.',
+          guest: (res.guest as Guest) || null,
+          message: res.message || 'Tamu sudah melakukan check-in sebelumnya.',
         });
-        if (data.guest) setLastGuest(data.guest);
+        if (res.guest) setLastGuest(res.guest as Guest);
       } else {
         playError();
         setSuccessModalGuest(null);
         setScanResult({
           type: 'error',
           guest: null,
-          message: data.message || 'Tamu Tidak Ditemukan',
+          message: res.message || 'Tamu Tidak Ditemukan',
         });
       }
 
@@ -183,7 +140,7 @@ export default function ScannerPage() {
         scanCooldownRef.current = false;
       }, 1500);
     }
-  }, [isProcessing, refreshRecent]);
+  }, [isProcessing, checkinMutation]);
 
   // Camera Management
   const startCamera = useCallback(async () => {
@@ -286,92 +243,36 @@ export default function ScannerPage() {
     }
   }, [cameraActive, startCamera, stopCamera]);
 
-  // Search logic
-  const fetchSearchResults = useCallback(async (queryText: string) => {
-    const trimmed = queryText.trim();
-    if (!trimmed) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return [];
-    }
-    setIsSearching(true);
-    try {
-      const res = await fetch(`/api/search?q=${encodeURIComponent(trimmed)}`);
-      if (res.ok) {
-        const results: Guest[] = await res.json();
-        setSearchResults(results);
-        return results;
-      }
-      return [];
-    } catch (e) {
-      console.error('Search failed:', e);
-      return [];
-    } finally {
-      setIsSearching(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    const trimmed = searchQuery.trim();
-    if (!trimmed) {
-      setSearchResults([]);
-      setIsSearching(false);
-      return;
-    }
-
-    setIsSearching(true);
-    debounceTimerRef.current = setTimeout(() => {
-      fetchSearchResults(trimmed);
-    }, 300);
-
-    return () => {
-      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-    };
-  }, [searchQuery, fetchSearchResults]);
-
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
-    setSearchResults([]);
-    setIsSearching(false);
     searchInputRef.current?.focus();
   }, []);
 
-  // Execute Check-in after confirmation
+  // Execute Check-in after confirmation via Convex
   const executeConfirmCheckin = useCallback(async () => {
     if (!confirmGuest) return;
     const guestToConfirm = confirmGuest;
     setConfirmGuest(null);
 
     try {
-      const res = await fetch('/api/checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: guestToConfirm.id, method: 'Input Panitia' }),
-      });
+      const data = await checkinMutation({ query: guestToConfirm.id, method: 'Input Panitia' });
 
-      const data = await res.json();
-
-      if (res.status === 200) {
+      if (data.status === 'success') {
         playSuccess();
-        setSuccessModalGuest(data.guest);
+        const guestData = data.guest as Guest;
+        setSuccessModalGuest(guestData);
         setScanResult({
           type: 'success',
-          guest: data.guest,
+          guest: guestData,
           message: data.message,
         });
-        setLastGuest(data.guest);
-        if (data.stats) setStats(data.stats);
-        refreshRecent();
-        if (searchQuery.trim()) {
-          fetchSearchResults(searchQuery.trim());
-        }
-      } else if (res.status === 409) {
+        setLastGuest(guestData);
+      } else if (data.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
         setScanResult({
           type: 'duplicate',
-          guest: data.guest,
+          guest: (data.guest as Guest) || null,
           message: data.message,
         });
       } else {
@@ -390,28 +291,16 @@ export default function ScannerPage() {
       console.error('Confirm checkin failed:', e);
       playError();
     }
-  }, [confirmGuest, searchQuery, fetchSearchResults, refreshRecent]);
+  }, [confirmGuest, checkinMutation]);
 
-  // Undo Check-in
+  // Undo Check-in via Convex
   const handleUndo = useCallback(async (guestId: string) => {
     try {
-      const res = await fetch('/api/undo', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: guestId }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.stats) setStats(data.stats);
-        refreshRecent();
-        if (searchQuery.trim()) {
-          fetchSearchResults(searchQuery.trim());
-        }
-      }
+      await undoMutation({ id: guestId });
     } catch (e) {
       console.error('Undo failed:', e);
     }
-  }, [refreshRecent, searchQuery, fetchSearchResults]);
+  }, [undoMutation]);
 
   // Format Time
   const formatTime = (isoString: string | null) => {

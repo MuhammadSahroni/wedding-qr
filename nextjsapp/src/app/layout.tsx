@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import ConvexClientProvider from "./ConvexClientProvider";
 
 export const metadata: Metadata = {
   title: "Sistem Check-In Tamu Resepsi | Wildan & Aisyah",
@@ -26,7 +27,7 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        {children}
+        <ConvexClientProvider>{children}</ConvexClientProvider>
       </body>
     </html>
   );

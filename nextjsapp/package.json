@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
+    "convex": "^1.46.0",
     "google-auth-library": "^11.1.0",
     "google-spreadsheet": "^5.3.0",
     "html5-qrcode": "^2.3.8",

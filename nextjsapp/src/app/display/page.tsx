@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useQuery } from 'convex/react';
+import { api } from '../../../convex/_generated/api';
 import { getPusherClient } from '@/lib/pusher-client';
 import { playWelcomeSound, initDisplayAudio, unlockAudio } from '@/lib/audio-display';
 import { Guest, Stats } from '@/lib/types';
@@ -12,13 +14,24 @@ export default function DisplayPage() {
   const [currentGuest, setCurrentGuest] = useState<Guest | null>(null);
   const [isGreeting, setIsGreeting] = useState(false);
   const [clock, setClock] = useState('');
-  const [stats, setStats] = useState<Stats>({ total: 0, present: 0, absent: 0, percentage: 0 });
-  const [isOnline, setIsOnline] = useState(false);
   const [greetingKey, setGreetingKey] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
 
-  const lastCheckedInAtRef = useRef<string | null>(null);
+  // Convex Reactive Subscriptions
+  const latestConvexEvent = useQuery(api.guests.getLatestEvent);
+  const convexStats = useQuery(api.guests.getStats);
+
+  const lastEventTsRef = useRef<number>(0);
+  const initialLoadRef = useRef(true);
   const greetingTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Stats derived from Convex or fallback
+  const stats: Stats = useMemo(() => {
+    if (convexStats) return convexStats;
+    return { total: 957, present: 0, absent: 957, percentage: 0 };
+  }, [convexStats]);
+
+  const isOnline = latestConvexEvent !== undefined;
 
   // Initialize audio unlock
   useEffect(() => {
@@ -63,86 +76,32 @@ export default function DisplayPage() {
     }, GREETING_DURATION);
   }, []);
 
-  // Fetch initial stats & recent
+  // Convex Reactive Real-time trigger: Pops up automatically whenever a guest check-in event occurs!
   useEffect(() => {
-    fetch('/api/stats')
-      .then(res => res.json())
-      .then(data => setStats(data))
-      .catch(console.error);
+    if (!latestConvexEvent) return;
 
-    fetch('/api/guests?filter=present')
-      .then(res => res.json())
-      .then((data: Guest[]) => {
-        if (data.length > 0 && data[0].checked_in_at) {
-          lastCheckedInAtRef.current = data[0].checked_in_at;
-        }
-      })
-      .catch(console.error);
-  }, []);
-
-  // Pusher Realtime Connection & Fallback Polling
-  useEffect(() => {
-    const pusher = getPusherClient();
-    let isPusherActive = false;
-
-    if (pusher) {
-      const channel = pusher.subscribe('wedding-checkin');
-
-      channel.bind('guest:checkin', (data: { guest: Guest; stats: Stats }) => {
-        if (data.guest) {
-          lastCheckedInAtRef.current = data.guest.checked_in_at;
-          showGreeting(data.guest);
-        }
-        if (data.stats) {
-          setStats(data.stats);
-        }
-      });
-
-      channel.bind('stats:update', (newStats: Stats) => {
-        setStats(newStats);
-      });
-
-      pusher.connection.bind('connected', () => {
-        setIsOnline(true);
-        isPusherActive = true;
-      });
-
-      pusher.connection.bind('disconnected', () => {
-        setIsOnline(false);
-      });
+    if (initialLoadRef.current) {
+      initialLoadRef.current = false;
+      lastEventTsRef.current = latestConvexEvent.timestamp;
+      return;
     }
 
-    // Smart background polling fallback (checks every 2.5s if a new guest arrived)
-    const pollInterval = setInterval(async () => {
-      try {
-        const res = await fetch('/api/guests?filter=present');
-        if (res.ok) {
-          const list: Guest[] = await res.json();
-          if (list.length > 0) {
-            const latest = list[0];
-            if (latest.checked_in_at && latest.checked_in_at !== lastCheckedInAtRef.current) {
-              const diffMs = Date.now() - new Date(latest.checked_in_at).getTime();
-              lastCheckedInAtRef.current = latest.checked_in_at;
-              // If check-in happened in the last 10 seconds and Pusher didn't trigger
-              if (diffMs < 10000 && !isGreeting) {
-                showGreeting(latest);
-              }
-            }
-          }
-          if (!isPusherActive) setIsOnline(true);
-        }
-      } catch (err) {
-        if (!isPusherActive) setIsOnline(false);
-      }
-    }, 2500);
-
-    return () => {
-      clearInterval(pollInterval);
-      if (pusher) {
-        pusher.unsubscribe('wedding-checkin');
-      }
-    };
-  }, [showGreeting, isGreeting]);
+    if (latestConvexEvent.timestamp > lastEventTsRef.current) {
+      lastEventTsRef.current = latestConvexEvent.timestamp;
+      showGreeting({
+        id: latestConvexEvent.guest_id,
+        no: 0,
+        name: latestConvexEvent.name,
+        category: latestConvexEvent.category,
+        qr_payload: latestConvexEvent.guest_id,
+        is_present: true,
+        checked_in_at: latestConvexEvent.checked_in_at,
+        checkin_method: latestConvexEvent.method,
+        is_walkin: latestConvexEvent.guest_id.startsWith('WALK'),
+        pax: latestConvexEvent.pax,
+      });
+    }
+  }, [latestConvexEvent, showGreeting]);
 
   // Floating gold particles
   const particles = useMemo(() => {
