@@ -13,6 +13,7 @@ export default function ScannerPage() {
   const convexRecent = useQuery(api.guests.getRecentCheckins, { limit: 10 });
   const checkinMutation = useMutation(api.guests.checkin);
   const undoMutation = useMutation(api.guests.undoCheckin);
+  const walkinMutation = useMutation(api.guests.addWalkin);
 
   const [scanResult, setScanResult] = useState<{ type: 'success' | 'duplicate' | 'error'; guest: Guest | null; message: string } | null>(null);
   const [lastGuest, setLastGuest] = useState<Guest | null>(null);
@@ -24,6 +25,14 @@ export default function ScannerPage() {
   const [successModalGuest, setSuccessModalGuest] = useState<Guest | null>(null);
   const [showMejaQrModal, setShowMejaQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Walk-In state
+  const [showWalkinModal, setShowWalkinModal] = useState(false);
+  const [walkinName, setWalkinName] = useState('');
+  const [walkinCategory, setWalkinCategory] = useState('Tamu Tambahan');
+  const [walkinPax, setWalkinPax] = useState('1');
+  const [walkinNotes, setWalkinNotes] = useState('');
+  const [isSubmittingWalkin, setIsSubmittingWalkin] = useState(false);
 
   // Reactive search from Convex
   const searchResultsData = useQuery(api.guests.search, { query: searchQuery });
@@ -96,6 +105,13 @@ export default function ScannerPage() {
           message: res.message || 'Scan QR Berhasil',
         });
         setLastGuest(guestData);
+
+        // Sync to Google Spreadsheet
+        fetch('/api/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: trimmed, method: 'QR Scan' }),
+        }).catch((e) => console.error('Sheet checkin sync error:', e));
       } else if (res.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
@@ -261,6 +277,13 @@ export default function ScannerPage() {
           message: data.message,
         });
         setLastGuest(guestData);
+
+        // Sync to Google Spreadsheet
+        fetch('/api/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: guestToConfirm.id, method: 'Input Panitia' }),
+        }).catch((e) => console.error('Sheet checkin sync error:', e));
       } else if (data.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
@@ -287,10 +310,74 @@ export default function ScannerPage() {
     }
   }, [confirmGuest, checkinMutation]);
 
-  // Undo Check-in via Convex
+  // Handle Walk-in Submission via Convex and Google Sheets
+  const handleWalkinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = walkinName.trim();
+    if (!trimmed || isSubmittingWalkin) return;
+
+    setIsSubmittingWalkin(true);
+    const paxNum = parseInt(walkinPax, 10) || 1;
+    const notesStr = walkinNotes.trim() || 'Input Panitia (Walk-In)';
+
+    try {
+      const data = await walkinMutation({
+        name: trimmed,
+        category: walkinCategory,
+        pax: paxNum,
+        notes: notesStr,
+        method: 'Input Panitia',
+      });
+
+      if (data.status === 'success') {
+        playSuccess();
+        const guestData = data.guest as Guest;
+        setSuccessModalGuest(guestData);
+        setScanResult({
+          type: 'success',
+          guest: guestData,
+          message: data.message || 'Tamu Walk-In Berhasil Ditambahkan',
+        });
+        setLastGuest(guestData);
+        setShowWalkinModal(false);
+        setWalkinName('');
+        setWalkinNotes('');
+
+        // Sync to Google Spreadsheet
+        fetch('/api/walkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: trimmed,
+            category: walkinCategory,
+            pax: paxNum,
+            notes: notesStr,
+            method: 'Input Panitia',
+          }),
+        }).catch((err) => console.error('Sheet walkin sync error:', err));
+      } else if (data.status === 'duplicate') {
+        playDuplicate();
+        alert(data.message || 'Nama tamu ini sudah pernah didaftarkan check-in.');
+      }
+    } catch (err) {
+      console.error('Walkin submission failed:', err);
+      playError();
+      alert('Gagal menambahkan tamu. Periksa koneksi internet.');
+    } finally {
+      setIsSubmittingWalkin(false);
+    }
+  };
+
+  // Undo Check-in via Convex & Sheets
   const handleUndo = useCallback(async (guestId: string) => {
     try {
       await undoMutation({ id: guestId });
+      // Sync undo to Google Spreadsheet
+      fetch('/api/undo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: guestId }),
+      }).catch((e) => console.error('Sheet undo sync error:', e));
     } catch (e) {
       console.error('Undo failed:', e);
     }
@@ -317,6 +404,16 @@ export default function ScannerPage() {
           <span className="subtitle">Guest Check-In System</span>
         </div>
         <div className="header-right">
+          <button
+            type="button"
+            className="btn-qr-meja"
+            style={{ background: 'linear-gradient(135deg, #8B7635, #C5A55A)', color: '#fff', borderColor: '#8B7635' }}
+            onClick={() => setShowWalkinModal(true)}
+            title="Tambah Tamu Baru (Walk-In) Tanpa ID Tamu"
+          >
+            <span className="material-symbols-outlined">person_add</span>
+            <span>+ Tamu Walk-In</span>
+          </button>
           <button
             type="button"
             className="btn-qr-meja"
@@ -748,6 +845,106 @@ export default function ScannerPage() {
                 <span className="material-symbols-outlined">close</span> Tutup
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Tambah Tamu Baru / Walk-In */}
+      {showWalkinModal && (
+        <div className="modal-overlay" onClick={() => setShowWalkinModal(false)}>
+          <div className="modal-dialog modal-walkin" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '480px' }}>
+            <div className="modal-icon-wrapper" style={{ color: '#C5A55A' }}>
+              <span className="material-symbols-outlined">person_add</span>
+            </div>
+            <h3 className="modal-title" style={{ color: '#2C2417' }}>Tambah Tamu Baru (Walk-In)</h3>
+            <p className="modal-subtitle">
+              Tamu yang belum memiliki QR / ID Tamu akan otomatis tercatat hadir di Display Layar &amp; Google Spreadsheet.
+            </p>
+
+            <form onSubmit={handleWalkinSubmit} style={{ marginTop: '16px', display: 'flex', flexDirection: 'column', gap: '14px', textAlign: 'left' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#4A3F32', marginBottom: '6px' }}>
+                  Nama Lengkap Tamu <span style={{ color: '#c53030' }}>*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Contoh: Bpk. Bambang Sutrisno"
+                  value={walkinName}
+                  onChange={(e) => setWalkinName(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #D4AF37', outline: 'none', fontSize: '14px', background: '#FAF8F5' }}
+                  autoFocus
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#4A3F32', marginBottom: '6px' }}>
+                    Kategori Tamu
+                  </label>
+                  <select
+                    value={walkinCategory}
+                    onChange={(e) => setWalkinCategory(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E8DFD0', outline: 'none', fontSize: '14px', background: '#FAF8F5' }}
+                  >
+                    <option value="Tamu Tambahan">Tamu Tambahan</option>
+                    <option value="Keluarga">Keluarga</option>
+                    <option value="VIP">VIP</option>
+                    <option value="Reguler">Reguler</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#4A3F32', marginBottom: '6px' }}>
+                    Jumlah (Pax)
+                  </label>
+                  <select
+                    value={walkinPax}
+                    onChange={(e) => setWalkinPax(e.target.value)}
+                    style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E8DFD0', outline: 'none', fontSize: '14px', background: '#FAF8F5' }}
+                  >
+                    <option value="1">1 Orang</option>
+                    <option value="2">2 Orang</option>
+                    <option value="3">3 Orang</option>
+                    <option value="4">4 Orang</option>
+                    <option value="5">5+ Orang</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '12px', fontWeight: 600, color: '#4A3F32', marginBottom: '6px' }}>
+                  Catatan (Opsional)
+                </label>
+                <input
+                  type="text"
+                  placeholder="Contoh: Teman kantor mempelai pria"
+                  value={walkinNotes}
+                  onChange={(e) => setWalkinNotes(e.target.value)}
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: '8px', border: '1px solid #E8DFD0', outline: 'none', fontSize: '14px', background: '#FAF8F5' }}
+                />
+              </div>
+
+              <div className="modal-actions" style={{ marginTop: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-modal-cancel"
+                  onClick={() => setShowWalkinModal(false)}
+                  disabled={isSubmittingWalkin}
+                >
+                  <span className="material-symbols-outlined">close</span> Batal
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-modal-confirm"
+                  disabled={isSubmittingWalkin || !walkinName.trim()}
+                >
+                  <span className="material-symbols-outlined">
+                    {isSubmittingWalkin ? 'progress_activity' : 'check_circle'}
+                  </span>
+                  <span>{isSubmittingWalkin ? 'Menyimpan...' : 'Simpan & Check-In'}</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

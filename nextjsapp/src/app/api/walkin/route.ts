@@ -5,13 +5,19 @@ import { broadcastCheckin } from '@/lib/pusher-server';
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, category, pax, notes } = body;
+    const { name, category, pax, notes, method } = body;
 
     if (!name || !name.trim()) {
       return NextResponse.json({ status: 'error', message: 'Nama tamu wajib diisi' }, { status: 400 });
     }
 
-    const result = await addWalkin(name, category || 'Tamu Tambahan', pax || 1, notes || 'Input Mandiri (Walk-in)');
+    const result = await addWalkin(
+      name, 
+      category || 'Tamu Tambahan', 
+      pax || 1, 
+      notes || 'Input Mandiri (Walk-in)',
+      method || 'Mandiri'
+    );
 
     if (result.status === 'duplicate') {
       return NextResponse.json(result, { status: 409 });

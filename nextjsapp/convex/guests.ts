@@ -231,6 +231,7 @@ export const addWalkin = mutation({
     category: v.string(),
     pax: v.number(),
     notes: v.optional(v.string()),
+    method: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const trimmed = args.name.trim();
@@ -254,6 +255,7 @@ export const addWalkin = mutation({
     const walkinCount = allGuests.filter((g) => g.is_walkin).length + 1;
     const newId = `WALK${String(walkinCount).padStart(4, "0")}`;
     const now = new Date().toISOString();
+    const method = args.method || "Mandiri";
 
     const newGuest = {
       no: allGuests.length + 1,
@@ -263,10 +265,10 @@ export const addWalkin = mutation({
       qr_payload: trimmed,
       is_present: true,
       checked_in_at: now,
-      checkin_method: "Mandiri",
+      checkin_method: method,
       is_walkin: true,
       pax: args.pax || 1,
-      notes: args.notes || "Check-In Mandiri (Walk-In)",
+      notes: args.notes || (method === "Mandiri" ? "Check-In Mandiri (Walk-In)" : "Input Panitia (Walk-In)"),
     };
 
     const docId = await ctx.db.insert("guests", newGuest);
@@ -278,7 +280,7 @@ export const addWalkin = mutation({
       category: newGuest.category,
       pax: newGuest.pax,
       checked_in_at: now,
-      method: "Mandiri",
+      method: method,
       timestamp: Date.now(),
     });
 

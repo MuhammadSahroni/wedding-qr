@@ -76,18 +76,33 @@ export default function DisplayPage() {
     }, GREETING_DURATION);
   }, []);
 
+  const lastGreetingTimeRef = useRef<number>(0);
+  const lastGuestIdRef = useRef<string>('');
+  const pageMountTimeRef = useRef<number>(Date.now());
+
   // Convex Reactive Real-time trigger: Pops up automatically whenever a guest check-in event occurs!
   useEffect(() => {
     if (!latestConvexEvent) return;
 
     if (initialLoadRef.current) {
       initialLoadRef.current = false;
-      lastEventTsRef.current = latestConvexEvent.timestamp;
-      return;
+      // If the latest event is older than when the display page was opened, don't replay it
+      if (latestConvexEvent.timestamp < pageMountTimeRef.current - 2000) {
+        lastEventTsRef.current = latestConvexEvent.timestamp;
+        return;
+      }
     }
 
     if (latestConvexEvent.timestamp > lastEventTsRef.current) {
       lastEventTsRef.current = latestConvexEvent.timestamp;
+
+      // Prevent duplicate trigger within 3.5s for same guest
+      if (lastGuestIdRef.current === latestConvexEvent.guest_id && Date.now() - lastGreetingTimeRef.current < 3500) {
+        return;
+      }
+      lastGuestIdRef.current = latestConvexEvent.guest_id;
+      lastGreetingTimeRef.current = Date.now();
+
       showGreeting({
         id: latestConvexEvent.guest_id,
         no: 0,
@@ -102,6 +117,34 @@ export default function DisplayPage() {
       });
     }
   }, [latestConvexEvent, showGreeting]);
+
+  // Pusher Realtime Subscription (Redundant fallback channel)
+  useEffect(() => {
+    try {
+      const pusher = getPusherClient();
+      if (!pusher) return;
+
+      const channel = pusher.subscribe('wedding-checkin');
+      channel.bind('guest-checked-in', (data: { guest: Guest; stats: Stats }) => {
+        if (data?.guest) {
+          const guestId = data.guest.id;
+          if (lastGuestIdRef.current === guestId && Date.now() - lastGreetingTimeRef.current < 3500) {
+            return;
+          }
+          lastGuestIdRef.current = guestId;
+          lastGreetingTimeRef.current = Date.now();
+          showGreeting(data.guest);
+        }
+      });
+
+      return () => {
+        channel.unbind_all();
+        pusher.unsubscribe('wedding-checkin');
+      };
+    } catch (e) {
+      console.warn('Pusher display subscription warning:', e);
+    }
+  }, [showGreeting]);
 
   // Floating gold particles
   const particles = useMemo(() => {

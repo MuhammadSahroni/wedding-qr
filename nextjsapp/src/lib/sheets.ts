@@ -228,6 +228,29 @@ export async function checkin(query: string, method = 'QR Scan'): Promise<{ stat
   }
 
   if (guest.is_present) {
+    let sheetRow = rowMap.get(guest.id);
+    if (!sheetRow && googleSheet) {
+      try {
+        const rows = await googleSheet.getRows();
+        sheetRow = rows.find((r: any) => 
+          (r.get('ID Tamu') || '').toString().trim() === guest.id || 
+          (r.get('Nama Tamu') || '').toString().trim().toLowerCase() === guest.name.toLowerCase()
+        );
+        if (sheetRow) rowMap.set(guest.id, sheetRow);
+      } catch (err) {
+        console.error('[Sheets] Error finding row in sheet:', err);
+      }
+    }
+    if (sheetRow && sheetRow.get('Status Hadir') !== 'HADIR') {
+      sheetRow.set('Status Hadir', 'HADIR');
+      sheetRow.set('Waktu Hadir', guest.checked_in_at || new Date().toISOString());
+      sheetRow.set('Metode Checkin', guest.checkin_method || method);
+      try {
+        await sheetRow.save();
+      } catch (err) {
+        console.error('[Sheets] Error updating row:', err);
+      }
+    }
     return {
       status: 'duplicate',
       message: `${guest.name} sudah check-in pada ${guest.checked_in_at}`,
@@ -242,7 +265,20 @@ export async function checkin(query: string, method = 'QR Scan'): Promise<{ stat
   guest.checkin_method = method;
 
   // Update in Google Sheet
-  const sheetRow = rowMap.get(guest.id);
+  let sheetRow = rowMap.get(guest.id);
+  if (!sheetRow && googleSheet) {
+    try {
+      const rows = await googleSheet.getRows();
+      sheetRow = rows.find((r: any) => 
+        (r.get('ID Tamu') || '').toString().trim() === guest.id || 
+        (r.get('Nama Tamu') || '').toString().trim().toLowerCase() === guest.name.toLowerCase()
+      );
+      if (sheetRow) rowMap.set(guest.id, sheetRow);
+    } catch (err) {
+      console.error('[Sheets] Error finding row in sheet:', err);
+    }
+  }
+
   if (sheetRow) {
     sheetRow.set('Status Hadir', 'HADIR');
     sheetRow.set('Waktu Hadir', now);
@@ -275,7 +311,17 @@ export async function undoCheckin(id: string): Promise<{ status: 'success' | 'no
   guest.checked_in_at = null;
   guest.checkin_method = null;
 
-  const sheetRow = rowMap.get(guest.id);
+  let sheetRow = rowMap.get(guest.id);
+  if (!sheetRow && googleSheet) {
+    try {
+      const rows = await googleSheet.getRows();
+      sheetRow = rows.find((r: any) => (r.get('ID Tamu') || '').toString().trim() === guest.id);
+      if (sheetRow) rowMap.set(guest.id, sheetRow);
+    } catch (err) {
+      console.error('[Sheets] Error finding row in sheet:', err);
+    }
+  }
+
   if (sheetRow) {
     sheetRow.set('Status Hadir', 'BELUM');
     sheetRow.set('Waktu Hadir', '');
@@ -296,7 +342,13 @@ export async function undoCheckin(id: string): Promise<{ status: 'success' | 'no
   };
 }
 
-export async function addWalkin(name: string, category = 'Tamu Tambahan', pax = 1, notes = 'Input Mandiri (Walk-in)'): Promise<{ status: 'success' | 'duplicate'; guest: Guest; stats: Stats; message: string }> {
+export async function addWalkin(
+  name: string, 
+  category = 'Tamu Tambahan', 
+  pax = 1, 
+  notes = 'Input Mandiri (Walk-in)',
+  method = 'Mandiri'
+): Promise<{ status: 'success' | 'duplicate'; guest: Guest; stats: Stats; message: string }> {
   await initDatabase();
   const trimmedName = name.trim();
 
@@ -323,7 +375,7 @@ export async function addWalkin(name: string, category = 'Tamu Tambahan', pax = 
     qr_payload: trimmedName,
     is_present: true,
     checked_in_at: now,
-    checkin_method: 'Mandiri',
+    checkin_method: method,
     is_walkin: true,
     pax,
     notes,
@@ -342,7 +394,7 @@ export async function addWalkin(name: string, category = 'Tamu Tambahan', pax = 
         'QR Payload': newGuest.qr_payload,
         'Status Hadir': 'HADIR',
         'Waktu Hadir': now,
-        'Metode Checkin': 'Mandiri',
+        'Metode Checkin': method,
         'Pax': newGuest.pax,
         'Catatan': newGuest.notes,
       });

@@ -112,6 +112,15 @@ export default function SelfCheckinPage() {
         setSuccessData(data);
         playSuccessChime();
         fireConfetti();
+        // Asynchronously sync to Google Spreadsheet
+        fetch('/api/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: selectedGuest.id,
+            method: 'Check-In Mandiri',
+          }),
+        }).catch((e) => console.error('Spreadsheet sync error:', e));
       } else if (data.status === 'duplicate') {
         setAlertInfo({
           type: 'warning',
@@ -142,18 +151,34 @@ export default function SelfCheckinPage() {
     setIsSubmitting(true);
     setAlertInfo(null);
 
+    const paxNum = parseInt(walkinPax, 10) || 1;
+    const notesStr = walkinNotes.trim() || 'Check-In Mandiri (Walk-In)';
+
     try {
       const data = await walkinMutation({
         name: trimmed,
         category: walkinCategory,
-        pax: parseInt(walkinPax, 10) || 1,
-        notes: walkinNotes.trim() || 'Check-In Mandiri (Walk-In)',
+        pax: paxNum,
+        notes: notesStr,
+        method: 'Mandiri',
       });
 
       if (data.status === 'success') {
         setSuccessData(data);
         playSuccessChime();
         fireConfetti();
+        // Asynchronously sync new walkin to Google Spreadsheet
+        fetch('/api/walkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: trimmed,
+            category: walkinCategory,
+            pax: paxNum,
+            notes: notesStr,
+            method: 'Mandiri',
+          }),
+        }).catch((e) => console.error('Spreadsheet walkin sync error:', e));
       } else if (data.status === 'duplicate') {
         setAlertInfo({
           type: 'warning',
