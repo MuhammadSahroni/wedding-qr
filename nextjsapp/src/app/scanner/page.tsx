@@ -5,12 +5,11 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { Html5Qrcode } from 'html5-qrcode';
 import { playSuccess, playDuplicate, playError, initAudio } from '@/lib/audio-scanner';
-import { Guest, Stats } from '@/lib/types';
+import { Guest } from '@/lib/types';
 import '@/styles/scanner.css';
 
 export default function ScannerPage() {
   // Convex Reactive Data
-  const convexStats = useQuery(api.guests.getStats);
   const convexRecent = useQuery(api.guests.getRecentCheckins, { limit: 10 });
   const checkinMutation = useMutation(api.guests.checkin);
   const undoMutation = useMutation(api.guests.undoCheckin);
@@ -34,11 +33,6 @@ export default function ScannerPage() {
   }, [searchResultsData]);
   const isSearching = searchQuery.trim().length >= 2 && searchResultsData === undefined;
 
-  const stats: Stats = useMemo(() => {
-    if (convexStats) return convexStats;
-    return { total: 957, present: 0, absent: 957, percentage: 0 };
-  }, [convexStats]);
-
   const recentCheckins: Guest[] = useMemo(() => {
     if (convexRecent) return convexRecent as any;
     return [];
@@ -51,7 +45,7 @@ export default function ScannerPage() {
     }
   }, [recentCheckins, lastGuest]);
 
-  const isOnline = convexStats !== undefined;
+  const isOnline = convexRecent !== undefined;
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const html5QrCodeRef = useRef<Html5Qrcode | null>(null);
@@ -556,7 +550,7 @@ export default function ScannerPage() {
               <div>
                 <h2>Riwayat Check-In Terakhir</h2>
                 <p className="card-subtitle">
-                  Kehadiran: {stats.present} / {stats.total} Tamu ({stats.percentage}%)
+                  Daftar kehadiran tamu terkini
                 </p>
               </div>
             </div>
@@ -600,15 +594,8 @@ export default function ScannerPage() {
 
       {/* FOOTER */}
       <footer className="app-footer">
-        <div className="footer-actions-container">
-          <div className="stats-summary" style={{ display: 'flex', gap: '16px', color: '#4A3F32', fontWeight: 600 }}>
-            <span>Total Undangan: {stats.total}</span>
-            <span>Hadir: {stats.present}</span>
-            <span>Belum Hadir: {stats.absent}</span>
-          </div>
-        </div>
         <div className="footer-copyright">
-          <span>The Wedding of Wildan & Aisyah • Cloudflare Workers Monorepo</span>
+          <span>The Wedding of Wildan & Aisyah</span>
         </div>
       </footer>
 
