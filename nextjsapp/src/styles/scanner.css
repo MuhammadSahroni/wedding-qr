@@ -59,6 +59,7 @@ html, body {
   max-width: 100%;
   min-height: 100%;
   overflow-x: hidden;
+  overflow-y: auto !important;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -69,7 +70,9 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
+  overflow-y: auto !important;
   width: 100%;
+  height: auto !important;
 }
 
 #root {
@@ -79,15 +82,18 @@ body {
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: visible !important;
 }
 
 .app {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
+  height: auto !important;
   display: flex;
   flex-direction: column;
   overflow-x: hidden;
+  overflow-y: visible !important;
   box-sizing: border-box;
 }
 
@@ -237,17 +243,17 @@ body {
 }
 
 /* ============================================================
-   Main Layout: 2-Column Responsive Grid
+   Main Layout: 3-Column Responsive Grid on Desktop
    ============================================================ */
 .main-content-grid {
   flex: 1;
-  max-width: 1200px;
+  max-width: 1600px;
   width: 100%;
   margin: 0 auto;
   padding: 24px 20px 36px;
   display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 24px;
+  grid-template-columns: 1fr 1.15fr 1fr;
+  gap: 20px;
   align-items: start;
   box-sizing: border-box;
 }
@@ -255,7 +261,7 @@ body {
 .grid-column {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 20px;
   min-width: 0;
   width: 100%;
 }
@@ -739,7 +745,7 @@ body {
 }
 
 .search-list {
-  max-height: 320px;
+  max-height: 460px;
   overflow-y: auto;
 }
 
@@ -1184,7 +1190,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 340px;
+  max-height: 480px;
   overflow-y: auto;
 }
 
@@ -1376,7 +1382,7 @@ body {
 }
 
 .footer-copyright {
-  max-width: 1200px;
+  max-width: 1600px;
   margin: 14px auto 0;
   text-align: center;
   font-size: 0.75rem;
@@ -1389,7 +1395,19 @@ body {
    Responsive Layout & Mobile Optimization
    ============================================================ */
 
-/* Tablet & Intermediate Screens (<= 900px) */
+/* Medium Screens & Small Laptops (<= 1200px) */
+@media (max-width: 1200px) and (min-width: 901px) {
+  .main-content-grid {
+    grid-template-columns: 1fr 1fr;
+    max-width: 1200px;
+  }
+
+  .grid-col-recent {
+    grid-column: span 2;
+  }
+}
+
+/* Tablet & Mobile Screens (<= 900px) */
 @media (max-width: 900px) {
   .main-content-grid {
     grid-template-columns: 1fr;
@@ -1397,6 +1415,10 @@ body {
     gap: 20px;
     width: 100%;
     box-sizing: border-box;
+  }
+
+  .grid-col-recent {
+    grid-column: span 1;
   }
 
   .app-header {
