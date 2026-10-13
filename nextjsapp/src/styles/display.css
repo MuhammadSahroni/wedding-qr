@@ -305,16 +305,49 @@ body {
   letter-spacing: 4px;
 }
 
-.idle-stats {
-  position: absolute;
-  bottom: 110px;
-  left: 50%;
-  transform: translateX(-50%);
+/* ============================================================
+   Live Scanner Counting Widget (Simple seperti Jam)
+   ============================================================ */
+.idle-counter-simple {
+  margin-top: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  line-height: 1;
+  user-select: none;
+  transition: transform 0.3s ease, color 0.3s ease;
+}
+
+.idle-counter-icon {
+  font-size: 1.7rem;
+  line-height: 1;
+  color: var(--gold-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+}
+
+.idle-counter-value {
   font-family: 'Inter', sans-serif;
-  font-size: 0.85rem;
-  color: var(--text-light);
-  letter-spacing: 2px;
-  opacity: 0.6;
+  font-size: 1.8rem;
+  font-weight: 300;
+  color: var(--text-muted);
+  letter-spacing: 4px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.idle-counter-simple.bump {
+  transform: scale(1.08);
+}
+
+.idle-counter-simple.bump .idle-counter-value {
+  color: var(--gold-dark);
+  font-weight: 400;
 }
 
 /* ============================================================
@@ -621,4 +654,51 @@ body {
     opacity: 0.3;
   }
 }
-/* App-level styles - main styles in index.css */
+
+/* ============================================================
+   Queue Indicator Badges
+   ============================================================ */
+.display-queue-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(197, 165, 90, 0.12);
+  border: 1px solid rgba(197, 165, 90, 0.3);
+  backdrop-filter: blur(8px);
+  padding: 4px 12px;
+  border-radius: 20px;
+  color: var(--gold-dark);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  animation: queuePulse 2.5s infinite ease-in-out;
+}
+
+.greeting-queue-pill {
+  margin-top: 18px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(197, 165, 90, 0.15);
+  border: 1px solid rgba(197, 165, 90, 0.35);
+  backdrop-filter: blur(10px);
+  padding: 8px 20px;
+  border-radius: 24px;
+  color: var(--gold-dark);
+  font-family: 'Inter', sans-serif;
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  animation: greetFadeIn 0.5s ease-out;
+}
+
+@keyframes queuePulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(197, 165, 90, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 10px 2px rgba(197, 165, 90, 0.3);
+  }
+}
+

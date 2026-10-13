@@ -8,6 +8,8 @@
  * @module
  */
 
+import type * as crons from "../crons.js";
+import type * as display from "../display.js";
 import type * as guests from "../guests.js";
 import type * as sheetsSync from "../sheetsSync.js";
 
@@ -18,6 +20,8 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  crons: typeof crons;
+  display: typeof display;
   guests: typeof guests;
   sheetsSync: typeof sheetsSync;
 }>;

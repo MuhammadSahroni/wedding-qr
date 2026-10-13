@@ -1,14 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
-import { getPusherClient } from '@/lib/pusher-client';
 import { playWelcomeSound, initDisplayAudio, unlockAudio } from '@/lib/audio-display';
 import { Guest, Stats } from '@/lib/types';
 import '@/styles/display.css';
-
-const GREETING_DURATION = 5000; // 5 seconds
 
 export default function DisplayPage() {
   const [currentGuest, setCurrentGuest] = useState<Guest | null>(null);
@@ -16,14 +13,16 @@ export default function DisplayPage() {
   const [clock, setClock] = useState('');
   const [greetingKey, setGreetingKey] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
+  const [isCounterBumped, setIsCounterBumped] = useState(false);
+  const prevCountRef = useRef<number | null>(null);
 
   // Convex Reactive Subscriptions
-  const latestConvexEvent = useQuery(api.guests.getLatestEvent);
+  // displayState is managed by Convex scheduler/cron queue system (5s per guest)
+  const displayState = useQuery(api.display.getCurrentDisplay);
   const convexStats = useQuery(api.guests.getStats);
 
-  const lastEventTsRef = useRef<number>(0);
-  const initialLoadRef = useRef(true);
-  const greetingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const lastActiveIdRef = useRef<string | null>(null);
+  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Stats derived from Convex or fallback
   const stats: Stats = useMemo(() => {
@@ -31,7 +30,19 @@ export default function DisplayPage() {
     return { total: 957, present: 0, absent: 957, percentage: 0 };
   }, [convexStats]);
 
-  const isOnline = latestConvexEvent !== undefined;
+  // Live count bump animation when checkin occurs
+  useEffect(() => {
+    if (convexStats?.present !== undefined) {
+      if (prevCountRef.current !== null && convexStats.present > prevCountRef.current) {
+        setIsCounterBumped(true);
+        const timer = setTimeout(() => setIsCounterBumped(false), 1200);
+        return () => clearTimeout(timer);
+      }
+      prevCountRef.current = convexStats.present;
+    }
+  }, [convexStats?.present]);
+
+  const isOnline = displayState !== undefined;
 
   // Initialize audio unlock
   useEffect(() => {
@@ -60,91 +71,53 @@ export default function DisplayPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Show greeting
-  const showGreeting = useCallback((guest: Guest) => {
-    setCurrentGuest(guest);
-    setIsGreeting(true);
-    setGreetingKey(prev => prev + 1);
-
-    // Play welcome fanfare
-    playWelcomeSound();
-
-    if (greetingTimerRef.current) clearTimeout(greetingTimerRef.current);
-    greetingTimerRef.current = setTimeout(() => {
-      setIsGreeting(false);
-      setCurrentGuest(null);
-    }, GREETING_DURATION);
-  }, []);
-
-  const lastGreetingTimeRef = useRef<number>(0);
-  const lastGuestIdRef = useRef<string>('');
-  const pageMountTimeRef = useRef<number>(Date.now());
-
-  // Convex Reactive Real-time trigger: Pops up automatically whenever a guest check-in event occurs!
+  // Convex Reactive Real-time trigger:
+  // Driven entirely by Convex backend queue & scheduler!
+  // Each guest is guaranteed to appear for 5 seconds, followed in order by queued arrivals.
   useEffect(() => {
-    if (!latestConvexEvent) return;
+    if (!displayState) return;
 
-    if (initialLoadRef.current) {
-      initialLoadRef.current = false;
-      // If the latest event is older than when the display page was opened, don't replay it
-      if (latestConvexEvent.timestamp < pageMountTimeRef.current - 2000) {
-        lastEventTsRef.current = latestConvexEvent.timestamp;
-        return;
-      }
-    }
+    if (displayState.active) {
+      if (lastActiveIdRef.current !== displayState.active._id) {
+        lastActiveIdRef.current = displayState.active._id;
 
-    if (latestConvexEvent.timestamp > lastEventTsRef.current) {
-      lastEventTsRef.current = latestConvexEvent.timestamp;
+        setCurrentGuest({
+          id: displayState.active.guest_id,
+          no: 0,
+          name: displayState.active.name,
+          category: displayState.active.category,
+          qr_payload: displayState.active.guest_id,
+          is_present: true,
+          checked_in_at: displayState.active.checked_in_at,
+          checkin_method: displayState.active.method,
+          is_walkin: displayState.active.guest_id.startsWith('WALK'),
+          pax: displayState.active.pax,
+        });
 
-      // Prevent duplicate trigger within 3.5s for same guest
-      if (lastGuestIdRef.current === latestConvexEvent.guest_id && Date.now() - lastGreetingTimeRef.current < 3500) {
-        return;
-      }
-      lastGuestIdRef.current = latestConvexEvent.guest_id;
-      lastGreetingTimeRef.current = Date.now();
+        setIsGreeting(true);
+        setGreetingKey((prev) => prev + 1);
 
-      showGreeting({
-        id: latestConvexEvent.guest_id,
-        no: 0,
-        name: latestConvexEvent.name,
-        category: latestConvexEvent.category,
-        qr_payload: latestConvexEvent.guest_id,
-        is_present: true,
-        checked_in_at: latestConvexEvent.checked_in_at,
-        checkin_method: latestConvexEvent.method,
-        is_walkin: latestConvexEvent.guest_id.startsWith('WALK'),
-        pax: latestConvexEvent.pax,
-      });
-    }
-  }, [latestConvexEvent, showGreeting]);
+        // Play celebratory chime/fanfare
+        playWelcomeSound();
 
-  // Pusher Realtime Subscription (Redundant fallback channel)
-  useEffect(() => {
-    try {
-      const pusher = getPusherClient();
-      if (!pusher) return;
-
-      const channel = pusher.subscribe('wedding-checkin');
-      channel.bind('guest-checked-in', (data: { guest: Guest; stats: Stats }) => {
-        if (data?.guest) {
-          const guestId = data.guest.id;
-          if (lastGuestIdRef.current === guestId && Date.now() - lastGreetingTimeRef.current < 3500) {
-            return;
+        // Safety fallback timer (in case backend scheduler network lags, gracefully return after 6.5s)
+        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+        fallbackTimerRef.current = setTimeout(() => {
+          if (!displayState.queueCount && !displayState.active) {
+            setIsGreeting(false);
+            setCurrentGuest(null);
           }
-          lastGuestIdRef.current = guestId;
-          lastGreetingTimeRef.current = Date.now();
-          showGreeting(data.guest);
-        }
-      });
-
-      return () => {
-        channel.unbind_all();
-        pusher.unsubscribe('wedding-checkin');
-      };
-    } catch (e) {
-      console.warn('Pusher display subscription warning:', e);
+        }, 6500);
+      }
+    } else {
+      if (lastActiveIdRef.current !== null) {
+        lastActiveIdRef.current = null;
+        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+        setIsGreeting(false);
+        setCurrentGuest(null);
+      }
     }
-  }, [showGreeting]);
+  }, [displayState]);
 
   // Floating gold particles
   const particles = useMemo(() => {
@@ -229,6 +202,14 @@ export default function DisplayPage() {
           </span>
           <span>{audioReady ? 'Audio ON' : 'Klik Aktifkan Suara'}</span>
         </div>
+        {displayState && displayState.queueCount > 0 && (
+          <div className="display-queue-badge">
+            <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: 'var(--gold-primary)' }}>
+              hourglass_top
+            </span>
+            <span>Antrian: {displayState.queueCount} tamu</span>
+          </div>
+        )}
         <div className="connection-status">
           <div className={`status-dot ${isOnline ? 'connected' : 'disconnected'}`} />
           <span>{isOnline ? 'Online (Real-time)' : 'Menghubungkan...'}</span>
@@ -252,6 +233,20 @@ export default function DisplayPage() {
             </span>
             <span>Silakan scan QR Code undangan Anda di meja penerima tamu</span>
           </div>
+
+          {/* Live Scanner Counting (Simple seperti jam, icon sejajar dengan angka) */}
+          <div
+            className={`idle-counter-simple ${isCounterBumped ? 'bump' : ''}`}
+            title="Live Scanner Counter"
+          >
+            <span className="material-symbols-outlined idle-counter-icon">
+              qr_code_scanner
+            </span>
+            <span className="idle-counter-value">
+              {stats.present}
+            </span>
+          </div>
+
           <div className="idle-clock">{clock}</div>
         </div>
       )}
@@ -299,6 +294,18 @@ export default function DisplayPage() {
               <div className="greeting-name">{currentGuest.name}</div>
               {currentGuest.id && (
                 <div className="greeting-id">{currentGuest.id}</div>
+              )}
+              {displayState && displayState.queueCount > 0 && (
+                <div>
+                  <div className="greeting-queue-pill">
+                    <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--gold-primary)' }}>
+                      hourglass_top
+                    </span>
+                    <span>
+                      {displayState.queueCount} antrian berikutnya{displayState.nextGuest ? ` • ${displayState.nextGuest}` : ''}
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
 

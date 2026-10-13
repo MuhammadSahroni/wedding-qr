@@ -33,4 +33,23 @@ export default defineSchema({
     method: v.string(),
     timestamp: v.number(),
   }).index("by_timestamp", ["timestamp"]),
+
+  // Display queue system: ensures each guest gets 5s display even during burst arrivals
+  display_queue: defineTable({
+    guest_id: v.string(),
+    name: v.string(),
+    category: v.string(),
+    pax: v.number(),
+    checked_in_at: v.string(),
+    method: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("displaying"),
+      v.literal("completed")
+    ),
+    createdAt: v.number(),
+    displayStartedAt: v.optional(v.number()),
+  })
+    .index("by_status", ["status"])
+    .index("by_status_createdAt", ["status", "createdAt"]),
 });

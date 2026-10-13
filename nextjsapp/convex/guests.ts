@@ -1,6 +1,7 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import { enqueueGuestForDisplay } from "./display";
 
 export const getStats = query({
   args: {},
@@ -189,7 +190,7 @@ export const checkin = mutation({
       checkin_method: checkinMethod,
     };
 
-    // Emit live event for display TV
+    // Emit live event for display TV (legacy backwards compatibility)
     await ctx.db.insert("checkin_events", {
       guest_id: target.id,
       name: target.name,
@@ -198,6 +199,16 @@ export const checkin = mutation({
       checked_in_at: now,
       method: checkinMethod,
       timestamp: Date.now(),
+    });
+
+    // Enqueue guest for 5-second TV display queue with Convex Scheduler
+    await enqueueGuestForDisplay(ctx, {
+      guest_id: target.id,
+      name: target.name,
+      category: target.category,
+      pax: target.pax,
+      checked_in_at: now,
+      method: checkinMethod,
     });
 
     // Sync directly to Google Spreadsheet from Convex Cloud!
@@ -233,6 +244,17 @@ export const undoCheckin = mutation({
       checked_in_at: undefined,
       checkin_method: undefined,
     });
+
+    // Remove from display queue if still waiting
+    const queuedDisplay = await ctx.db
+      .query("display_queue")
+      .withIndex("by_status", (q) => q.eq("status", "queued"))
+      .filter((q) => q.eq(q.field("guest_id"), args.id))
+      .first();
+
+    if (queuedDisplay) {
+      await ctx.db.delete(queuedDisplay._id);
+    }
 
     // Sync undo directly to Google Spreadsheet from Convex Cloud!
     await ctx.scheduler.runAfter(0, internal.sheetsSync.syncUndoToSheet, {
@@ -295,7 +317,7 @@ export const addWalkin = mutation({
 
     const docId = await ctx.db.insert("guests", newGuest);
 
-    // Emit live event for display TV
+    // Emit live event for display TV (legacy backwards compatibility)
     await ctx.db.insert("checkin_events", {
       guest_id: newId,
       name: trimmed,
@@ -304,6 +326,16 @@ export const addWalkin = mutation({
       checked_in_at: now,
       method: method,
       timestamp: Date.now(),
+    });
+
+    // Enqueue walk-in guest for 5-second TV display queue with Convex Scheduler
+    await enqueueGuestForDisplay(ctx, {
+      guest_id: newId,
+      name: trimmed,
+      category: newGuest.category,
+      pax: newGuest.pax,
+      checked_in_at: now,
+      method: method,
     });
 
     // Sync walk-in directly to Google Spreadsheet from Convex Cloud!
