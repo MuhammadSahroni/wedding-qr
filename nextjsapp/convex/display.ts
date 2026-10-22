@@ -62,14 +62,12 @@ export async function enqueueGuestForDisplay(
 /**
  * Advances the display queue:
  * Marks currently displaying item as completed,
- * picks the next queued guest (FIFO), sets status to displaying,
- * and schedules the next advance in 5000ms.
+ * provides a 2-second transition jeda on idle screen,
+ * then picks the next queued guest (FIFO) to display for 5000ms.
  */
 export const advanceQueue = internalMutation({
   args: {},
   handler: async (ctx) => {
-    const now = Date.now();
-
     // 1. Mark any displaying items as completed
     const activeItems = await ctx.db
       .query("display_queue")
@@ -88,13 +86,30 @@ export const advanceQueue = internalMutation({
       .first();
 
     if (nextItem) {
+      // Provide a 2000ms jeda (idle screen) before showing the next queued guest
+      await ctx.scheduler.runAfter(2000, internal.display.displayNextQueuedItem, {});
+    }
+  },
+});
+
+export const displayNextQueuedItem = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const nextItem = await ctx.db
+      .query("display_queue")
+      .withIndex("by_status_createdAt", (q) => q.eq("status", "queued"))
+      .order("asc")
+      .first();
+
+    if (nextItem) {
       // Mark as displaying
       await ctx.db.patch(nextItem._id, {
         status: "displaying",
         displayStartedAt: now,
       });
 
-      // Schedule the next transition in 5000ms
+      // Display this guest for 5000ms, then advance queue
       await ctx.scheduler.runAfter(5000, internal.display.advanceQueue, {});
     }
   },

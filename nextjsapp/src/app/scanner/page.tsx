@@ -72,6 +72,10 @@ export default function ScannerPage() {
   const lastKeyTimeRef = useRef<number>(0);
   const hardwareTestInputRef = useRef<HTMLInputElement>(null);
 
+  // Synchronous lock and payload deduplicator to ensure strictly 1 request per QR scan
+  const isProcessingScanRef = useRef(false);
+  const lastScannedPayloadRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
+
   // Clock
   useEffect(() => {
     initAudio();
@@ -93,14 +97,34 @@ export default function ScannerPage() {
     setConfirmGuest(guest);
   }, []);
 
-  // Process Camera QR scan result via Convex mutation
+  // Process Camera QR scan result via Convex mutation (Strictly 1 request per scan)
   const processScan = useCallback(async (rawText: string) => {
-    if (isProcessing || scanCooldownRef.current) return;
     if (!rawText || !rawText.trim()) return;
-
     const trimmed = rawText.trim();
+    const now = Date.now();
+
+    // 1. Synchronous lock: Prevent duplicate in-flight requests
+    if (isProcessingScanRef.current) return;
+
+    // 2. Synchronous deduplication: Block identical QR within 4.5 seconds
+    if (
+      lastScannedPayloadRef.current.text === trimmed &&
+      now - lastScannedPayloadRef.current.time < 4500
+    ) {
+      return;
+    }
+
+    // Lock immediately
+    isProcessingScanRef.current = true;
+    lastScannedPayloadRef.current = { text: trimmed, time: now };
     setIsProcessing(true);
-    scanCooldownRef.current = true;
+
+    // 3. Immediately pause camera decoding to stop subsequent video frames from scanning
+    try {
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        html5QrCodeRef.current.pause(true);
+      }
+    } catch {}
 
     try {
       const res = await checkinMutation({ query: trimmed, method: 'QR Scan' });
@@ -116,12 +140,18 @@ export default function ScannerPage() {
         });
         setLastGuest(guestData);
 
-        // Sync to Google Spreadsheet
+        // Sync to Google Spreadsheet & Local Display Bus
         fetch('/api/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: trimmed, method: 'QR Scan' }),
         }).catch((e) => console.error('Sheet checkin sync error:', e));
+
+        fetch('/api/display/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guest: guestData }),
+        }).catch(() => {});
       } else if (res.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
@@ -156,20 +186,39 @@ export default function ScannerPage() {
       resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     } finally {
       setIsProcessing(false);
+      // Unlock camera decoding after 2.5s cooldown
       setTimeout(() => {
-        scanCooldownRef.current = false;
-      }, 1500);
+        isProcessingScanRef.current = false;
+        try {
+          if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+            html5QrCodeRef.current.resume();
+          }
+        } catch {}
+      }, 2500);
     }
-  }, [isProcessing, checkinMutation]);
+  }, [checkinMutation]);
 
-  // Process Hardware Scanner QR scan result (Dongle, Bluetooth, USB) via Convex mutation
+  // Process Hardware Scanner QR scan result (Dongle, Bluetooth, USB) - Strictly 1 request
   const processHardwareScan = useCallback(async (rawText: string) => {
-    if (isProcessing || scanCooldownRef.current) return;
     if (!rawText || !rawText.trim()) return;
-
     const trimmed = rawText.trim();
+    const now = Date.now();
+
+    // 1. Synchronous lock: Prevent duplicate in-flight requests
+    if (isProcessingScanRef.current) return;
+
+    // 2. Synchronous deduplication: Block identical QR within 4.5 seconds
+    if (
+      lastScannedPayloadRef.current.text === trimmed &&
+      now - lastScannedPayloadRef.current.time < 4500
+    ) {
+      return;
+    }
+
+    // Lock immediately
+    isProcessingScanRef.current = true;
+    lastScannedPayloadRef.current = { text: trimmed, time: now };
     setIsProcessing(true);
-    scanCooldownRef.current = true;
     setLastHardwareScanText(trimmed);
 
     // Flash hardware scanner indicator
@@ -190,12 +239,18 @@ export default function ScannerPage() {
         });
         setLastGuest(guestData);
 
-        // Sync to Google Spreadsheet & Pusher
+        // Sync to Google Spreadsheet & Local Display Bus & Pusher
         fetch('/api/checkin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: trimmed, method: 'Scanner QR' }),
         }).catch((e) => console.error('Sheet checkin sync error:', e));
+
+        fetch('/api/display/notify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ guest: guestData }),
+        }).catch(() => {});
       } else if (res.status === 'duplicate') {
         playDuplicate();
         setSuccessModalGuest(null);
@@ -231,10 +286,10 @@ export default function ScannerPage() {
     } finally {
       setIsProcessing(false);
       setTimeout(() => {
-        scanCooldownRef.current = false;
-      }, 1200);
+        isProcessingScanRef.current = false;
+      }, 2000);
     }
-  }, [isProcessing, checkinMutation]);
+  }, [checkinMutation]);
 
   // Global Key Listener for Hardware Scanner (USB Cable, 2.4G Dongle & Bluetooth HID)
   useEffect(() => {

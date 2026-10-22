@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { checkin } from '@/lib/sheets';
 import { broadcastCheckin } from '@/lib/pusher-server';
+import { emitDisplayEvent } from '@/lib/display-bus';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,8 +25,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(result, { status: 409 });
     }
 
-    // Broadcast check-in event to Pusher (so /display updates in real-time)
+    // Broadcast check-in event to Local Display Bus (LAN) & Pusher (Cloud)
     if (result.guest && result.stats) {
+      emitDisplayEvent(result.guest, result.stats);
       await broadcastCheckin(result.guest, result.stats);
     }
 

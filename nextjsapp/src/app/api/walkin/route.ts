@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { addWalkin } from '@/lib/sheets';
 import { broadcastCheckin } from '@/lib/pusher-server';
+import { emitDisplayEvent } from '@/lib/display-bus';
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,6 +25,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (result.guest && result.stats) {
+      emitDisplayEvent(result.guest, result.stats);
       await broadcastCheckin(result.guest, result.stats);
     }
 

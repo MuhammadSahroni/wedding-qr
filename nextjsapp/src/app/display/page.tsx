@@ -15,8 +15,14 @@ export default function DisplayPage() {
   const [greetingKey, setGreetingKey] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
   const [isCounterBumped, setIsCounterBumped] = useState(false);
-  const [lastScannedCode, setLastScannedCode] = useState<string>('');
+  const [, setLastScannedCode] = useState<string>('');
+  const [queueCount, setQueueCount] = useState<number>(0);
   const prevCountRef = useRef<number | null>(null);
+
+  // Connectivity states across multi-tier engines (Local LAN SSE, Local Poll, Convex Cloud, Pusher Cloud)
+  const [isLocalConnected, setIsLocalConnected] = useState(false);
+  const [isPusherConnected, setIsPusherConnected] = useState(false);
+  const [localStats, setLocalStats] = useState<Stats | null>(null);
 
   // Convex Reactive Subscriptions & Mutations
   const displayState = useQuery(api.display.getCurrentDisplay);
@@ -24,37 +30,251 @@ export default function DisplayPage() {
   const checkinMutation = useMutation(api.guests.checkin);
 
   const lastActiveIdRef = useRef<string | null>(null);
-  const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hardwareScanBufferRef = useRef<string>('');
   const lastKeyTimeRef = useRef<number>(0);
   const isProcessingScanRef = useRef<boolean>(false);
+  const seenEventsRef = useRef<Set<string>>(new Set());
+  const lastPolledEventIdRef = useRef<string>('');
+  const hasPolledInitiallyRef = useRef<boolean>(false);
 
-  // Stats derived from Convex or fallback
+  // Queue and timing refs for strictly 5s display + 2s jeda between queued guests
+  const clientQueueRef = useRef<Guest[]>([]);
+  const isDisplayingGreetingRef = useRef<boolean>(false);
+  const greetingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const jedaTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Overall online status is true if ANY communication channel is active
+  const isConvexConnected = displayState !== undefined;
+  const isOnline = isLocalConnected || isPusherConnected || isConvexConnected;
+
+  // Stats derived from Convex, Local Poll, or initial fallback
   const stats: Stats = useMemo(() => {
-    if (convexStats) return convexStats;
+    if (convexStats && convexStats.total > 0) return convexStats;
+    if (localStats && localStats.total > 0) return localStats;
     return { total: 978, present: 0, absent: 978, percentage: 0 };
-  }, [convexStats]);
+  }, [convexStats, localStats]);
 
-  // Trigger celebratory guest greeting
-  const triggerGuestGreeting = useCallback((guest: Guest) => {
+  // Display a single guest card for exactly 5000ms, then wait 2000ms jeda before next queue item
+  const showGuestCard = useCallback((guest: Guest) => {
+    isDisplayingGreetingRef.current = true;
     setCurrentGuest(guest);
     setIsGreeting(true);
     setGreetingKey((prev) => prev + 1);
     setIsCounterBumped(true);
     setTimeout(() => setIsCounterBumped(false), 1200);
 
-    // Play fanfare chime
+    // Play welcome fanfare chime
     playWelcomeSound();
 
-    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-    fallbackTimerRef.current = setTimeout(() => {
+    if (greetingTimeoutRef.current) clearTimeout(greetingTimeoutRef.current);
+    if (jedaTimeoutRef.current) clearTimeout(jedaTimeoutRef.current);
+
+    // 1. Display guest card for exactly 5 seconds
+    greetingTimeoutRef.current = setTimeout(() => {
+      // Close greeting card -> Return to idle screen
       setIsGreeting(false);
       setCurrentGuest(null);
+
+      // 2. Provide 2 seconds JEDA (idle screen pause) before displaying next queued guest
+      jedaTimeoutRef.current = setTimeout(() => {
+        if (clientQueueRef.current.length > 0) {
+          const nextGuest = clientQueueRef.current.shift()!;
+          setQueueCount(clientQueueRef.current.length);
+          showGuestCard(nextGuest);
+        } else {
+          isDisplayingGreetingRef.current = false;
+          setQueueCount(0);
+        }
+      }, 2000);
     }, 5000);
   }, []);
 
-  // Hardware QR Scanner Listener (Dongle 2.4G, Bluetooth, & USB Wired)
-  // Connects immediately when the display page opens
+  // Trigger guest greeting with queue and deduplication
+  const triggerGuestGreeting = useCallback((guest: Guest, eventKey?: string) => {
+    if (!guest || !guest.name) return;
+
+    // Deduplicate rapid triggers from multiple engines
+    const dedupKey = eventKey || `${guest.id}_${guest.checked_in_at || ''}`;
+    if (eventKey && seenEventsRef.current.has(dedupKey)) {
+      return;
+    }
+    seenEventsRef.current.add(dedupKey);
+    setTimeout(() => {
+      seenEventsRef.current.delete(dedupKey);
+    }, 10000);
+
+    // If currently displaying a card or in jeda, push into FIFO queue
+    if (isDisplayingGreetingRef.current) {
+      clientQueueRef.current.push(guest);
+      setQueueCount(clientQueueRef.current.length);
+      return;
+    }
+
+    // Otherwise display immediately
+    showGuestCard(guest);
+  }, [showGuestCard]);
+
+  // 1. ENGINE 1: Local Server-Sent Events (SSE) Stream
+  useEffect(() => {
+    let es: EventSource | null = null;
+    let isMounted = true;
+
+    try {
+      es = new EventSource('/api/display/stream');
+
+      es.addEventListener('connected', (e: MessageEvent) => {
+        if (!isMounted) return;
+        setIsLocalConnected(true);
+        try {
+          const data = JSON.parse(e.data);
+          if (data.stats) setLocalStats(data.stats);
+          // NOTE: Do NOT show old/previous checkin on initial connect.
+          // Screen starts on idle screen and only reacts to fresh scans!
+        } catch {
+          // Ignore
+        }
+      });
+
+      es.addEventListener('checkin', (e: MessageEvent) => {
+        if (!isMounted) return;
+        setIsLocalConnected(true);
+        try {
+          const data = JSON.parse(e.data);
+          if (data.stats) setLocalStats(data.stats);
+          if (data.guest) {
+            triggerGuestGreeting(data.guest, data.id);
+          }
+        } catch (err) {
+          console.warn('[Display SSE] Parse error:', err);
+        }
+      });
+
+      es.onerror = () => {
+        if (!isMounted) return;
+        setIsLocalConnected(false);
+      };
+    } catch (err) {
+      console.warn('[Display SSE] Init error:', err);
+    }
+
+    return () => {
+      isMounted = false;
+      if (es) es.close();
+    };
+  }, [triggerGuestGreeting]);
+
+  // 2. ENGINE 2: Local HTTP Polling Fallback & Heartbeat (every 1.5s)
+  useEffect(() => {
+    let isMounted = true;
+
+    const poll = async () => {
+      try {
+        const url = lastPolledEventIdRef.current
+          ? `/api/display/poll?since=${encodeURIComponent(lastPolledEventIdRef.current)}`
+          : '/api/display/poll';
+        const res = await fetch(url);
+        if (!res.ok) throw new Error('Poll failed');
+        const data = await res.json();
+        if (!isMounted) return;
+
+        setIsLocalConnected(true);
+        if (data.stats) setLocalStats(data.stats);
+
+        // On first poll, only set bookmark to avoid displaying past guests
+        if (!hasPolledInitiallyRef.current) {
+          hasPolledInitiallyRef.current = true;
+          if (data.latestEventId) {
+            lastPolledEventIdRef.current = data.latestEventId;
+          }
+          return;
+        }
+
+        if (data.newEvents && Array.isArray(data.newEvents)) {
+          for (const evt of data.newEvents) {
+            if (evt.guest) {
+              triggerGuestGreeting(evt.guest, evt.id);
+            }
+          }
+        }
+
+        if (data.latestEventId) {
+          lastPolledEventIdRef.current = data.latestEventId;
+        }
+      } catch {
+        // Silently retry next interval
+      }
+    };
+
+    poll();
+    const interval = setInterval(poll, 1500);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [triggerGuestGreeting]);
+
+  // 3. ENGINE 3: Real-time Pusher Subscription (Cloud WebSockets)
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_PUSHER_KEY || '2d0c35da6d6434f594d5';
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap1';
+    if (!key) return;
+
+    try {
+      const pusher = new Pusher(key, { cluster });
+
+      pusher.connection.bind('state_change', (states: { current: string }) => {
+        setIsPusherConnected(states.current === 'connected');
+      });
+
+      const channel = pusher.subscribe('wedding-checkin');
+
+      channel.bind('guest:checkin', (data: { guest: Guest; stats?: any }) => {
+        if (data?.guest) {
+          triggerGuestGreeting(data.guest, `pusher_${data.guest.id}_${data.guest.checked_in_at}`);
+        }
+        if (data?.stats) {
+          setLocalStats(data.stats);
+        }
+      });
+
+      return () => {
+        channel.unbind_all();
+        channel.unsubscribe();
+        pusher.disconnect();
+      };
+    } catch (err) {
+      console.warn('[Display Pusher] Init error:', err);
+    }
+  }, [triggerGuestGreeting]);
+
+  // 4. ENGINE 4: Convex Reactive Trigger from display_queue
+  useEffect(() => {
+    if (!displayState || !displayState.active) return;
+
+    // Only process if this active item is fresh (< 4000ms old) to avoid replaying previous sessions
+    const isRecent = Date.now() - (displayState.active.displayStartedAt || 0) < 4000;
+    if (lastActiveIdRef.current !== displayState.active._id && isRecent) {
+      lastActiveIdRef.current = displayState.active._id;
+
+      const guestObj: Guest = {
+        id: displayState.active.guest_id,
+        no: 0,
+        name: displayState.active.name,
+        category: displayState.active.category,
+        qr_payload: displayState.active.guest_id,
+        is_present: true,
+        checked_in_at: displayState.active.checked_in_at,
+        checkin_method: displayState.active.method,
+        is_walkin: displayState.active.guest_id.startsWith('WALK'),
+        pax: displayState.active.pax,
+      };
+
+      triggerGuestGreeting(guestObj, `convex_${displayState.active._id}`);
+    }
+  }, [displayState, triggerGuestGreeting]);
+
+  // Hardware QR Scanner Listener on this Display device (Dongle 2.4G, Bluetooth, & USB Wired)
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
@@ -85,16 +305,20 @@ export default function DisplayPage() {
               const guestData = res.guest as Guest;
               triggerGuestGreeting(guestData);
 
-              // Sync to Google Spreadsheet & Pusher
+              // Broadcast to Local Display Bus & Sheets & Pusher
               fetch('/api/checkin', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query: scannedCode, method: 'Scanner QR (Display)' }),
               }).catch((err) => console.error('[Display Scan Sync]', err));
-            } else if (res.status === 'duplicate' && res.guest) {
-              // Greet even on duplicate so guest is warmly acknowledged
-              triggerGuestGreeting(res.guest as Guest);
+
+              fetch('/api/display/notify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guest: guestData }),
+              }).catch(() => {});
             }
+            // NOTE: If res.status === 'duplicate', DO NOT SHOW on display screen!
           } catch (err) {
             console.error('[Display Hardware QR Scan Error]:', err);
           } finally {
@@ -122,45 +346,17 @@ export default function DisplayPage() {
     };
   }, [checkinMutation, triggerGuestGreeting]);
 
-  // Real-time Pusher Subscription (dual-redundant arrival from /scanner or smartphone)
-  useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_PUSHER_KEY || '2d0c35da6d6434f594d5';
-    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap1';
-    if (!key) return;
-
-    try {
-      const pusher = new Pusher(key, { cluster });
-      const channel = pusher.subscribe('wedding-checkin');
-
-      channel.bind('guest:checkin', (data: { guest: Guest; stats?: any }) => {
-        if (data?.guest) {
-          triggerGuestGreeting(data.guest);
-        }
-      });
-
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusher.disconnect();
-      };
-    } catch (err) {
-      console.warn('[Display Pusher] Init error:', err);
-    }
-  }, [triggerGuestGreeting]);
-
   // Live count bump animation when checkin occurs
   useEffect(() => {
-    if (convexStats?.present !== undefined) {
-      if (prevCountRef.current !== null && convexStats.present > prevCountRef.current) {
+    if (stats?.present !== undefined) {
+      if (prevCountRef.current !== null && stats.present > prevCountRef.current) {
         setIsCounterBumped(true);
         const timer = setTimeout(() => setIsCounterBumped(false), 1200);
         return () => clearTimeout(timer);
       }
-      prevCountRef.current = convexStats.present;
+      prevCountRef.current = stats.present;
     }
-  }, [convexStats?.present]);
-
-  const isOnline = displayState !== undefined;
+  }, [stats?.present]);
 
   // Initialize audio unlock
   useEffect(() => {
@@ -188,39 +384,6 @@ export default function DisplayPage() {
     const interval = setInterval(updateClock, 1000);
     return () => clearInterval(interval);
   }, []);
-
-  // Convex Reactive Real-time trigger from display_queue:
-  useEffect(() => {
-    if (!displayState) return;
-
-    if (displayState.active) {
-      if (lastActiveIdRef.current !== displayState.active._id) {
-        lastActiveIdRef.current = displayState.active._id;
-
-        const guestObj: Guest = {
-          id: displayState.active.guest_id,
-          no: 0,
-          name: displayState.active.name,
-          category: displayState.active.category,
-          qr_payload: displayState.active.guest_id,
-          is_present: true,
-          checked_in_at: displayState.active.checked_in_at,
-          checkin_method: displayState.active.method,
-          is_walkin: displayState.active.guest_id.startsWith('WALK'),
-          pax: displayState.active.pax,
-        };
-
-        triggerGuestGreeting(guestObj);
-      }
-    } else {
-      if (lastActiveIdRef.current !== null) {
-        lastActiveIdRef.current = null;
-        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-        setIsGreeting(false);
-        setCurrentGuest(null);
-      }
-    }
-  }, [displayState, triggerGuestGreeting]);
 
   // Floating gold particles
   const particles = useMemo(() => {
@@ -259,6 +422,8 @@ export default function DisplayPage() {
       size: `${6 + (i % 5) * 2}px`,
     }));
   }, [isGreeting, greetingKey]);
+
+  const activeQueueCount = queueCount > 0 ? queueCount : (displayState?.queueCount || 0);
 
   return (
     <div className="display-container" onClick={handleManualUnlock}>
@@ -300,6 +465,7 @@ export default function DisplayPage() {
           </span>
           <span>Scanner QR: Terhubung</span>
         </div>
+
         <div
           className={`audio-indicator ${audioReady ? 'active' : 'inactive'}`}
           onClick={(e) => {
@@ -313,15 +479,21 @@ export default function DisplayPage() {
           </span>
           <span>{audioReady ? 'Audio ON' : 'Klik Aktifkan Suara'}</span>
         </div>
-        {displayState && displayState.queueCount > 0 && (
+
+        {activeQueueCount > 0 && (
           <div className="display-queue-badge">
             <span className="material-symbols-outlined" style={{ fontSize: '0.95rem', color: 'var(--gold-primary)' }}>
               hourglass_top
             </span>
-            <span>Antrian: {displayState.queueCount} tamu</span>
+            <span>Antrian: {activeQueueCount} tamu</span>
           </div>
         )}
-        <div className="connection-status">
+
+        {/* Real-time Connection Status Indicator with Detailed Tooltip */}
+        <div
+          className="connection-status"
+          title={`Status Sinkronisasi:\n• Jaringan Lokal (SSE/Poll): ${isLocalConnected ? 'Terhubung (Aktif)' : 'Menghubungkan'}\n• Convex Cloud: ${isConvexConnected ? 'Terhubung (Aktif)' : 'Standby'}\n• Pusher Cloud: ${isPusherConnected ? 'Terhubung (Aktif)' : 'Standby'}`}
+        >
           <div className={`status-dot ${isOnline ? 'connected' : 'disconnected'}`} />
           <span>{isOnline ? 'Online (Real-time)' : 'Menghubungkan...'}</span>
         </div>
@@ -345,7 +517,7 @@ export default function DisplayPage() {
             <span>Scanner QR Terhubung (Dongle/BT/USB) • Scan Undangan Langsung Kapan Saja</span>
           </div>
 
-          {/* Live Scanner Counting (Simple seperti jam, icon sejajar dengan angka) */}
+          {/* Live Scanner Counting */}
           <div
             className={`idle-counter-simple ${isCounterBumped ? 'bump' : ''}`}
             title="Live Scanner Counter"
@@ -406,21 +578,21 @@ export default function DisplayPage() {
               {currentGuest.id && (
                 <div className="greeting-id">{currentGuest.id}</div>
               )}
-              {displayState && displayState.queueCount > 0 && (
+              {activeQueueCount > 0 && (
                 <div>
                   <div className="greeting-queue-pill">
                     <span className="material-symbols-outlined" style={{ fontSize: '1rem', color: 'var(--gold-primary)' }}>
                       hourglass_top
                     </span>
                     <span>
-                      {displayState.queueCount} antrian berikutnya{displayState.nextGuest ? ` • ${displayState.nextGuest}` : ''}
+                      {activeQueueCount} antrian berikutnya
                     </span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Progress bar */}
+            {/* Progress bar (5 seconds) */}
             <div className="greeting-progress">
               <div className="greeting-progress-bar" />
             </div>
