@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect, useMemo, useRef } from 'react';
-import { useQuery } from 'convex/react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { playWelcomeSound, initDisplayAudio, unlockAudio } from '@/lib/audio-display';
 import { Guest, Stats } from '@/lib/types';
+import Pusher from 'pusher-js';
 import '@/styles/display.css';
 
 export default function DisplayPage() {
@@ -14,21 +15,138 @@ export default function DisplayPage() {
   const [greetingKey, setGreetingKey] = useState(0);
   const [audioReady, setAudioReady] = useState(false);
   const [isCounterBumped, setIsCounterBumped] = useState(false);
+  const [lastScannedCode, setLastScannedCode] = useState<string>('');
   const prevCountRef = useRef<number | null>(null);
 
-  // Convex Reactive Subscriptions
-  // displayState is managed by Convex scheduler/cron queue system (5s per guest)
+  // Convex Reactive Subscriptions & Mutations
   const displayState = useQuery(api.display.getCurrentDisplay);
   const convexStats = useQuery(api.guests.getStats);
+  const checkinMutation = useMutation(api.guests.checkin);
 
   const lastActiveIdRef = useRef<string | null>(null);
   const fallbackTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hardwareScanBufferRef = useRef<string>('');
+  const lastKeyTimeRef = useRef<number>(0);
+  const isProcessingScanRef = useRef<boolean>(false);
 
   // Stats derived from Convex or fallback
   const stats: Stats = useMemo(() => {
     if (convexStats) return convexStats;
-    return { total: 957, present: 0, absent: 957, percentage: 0 };
+    return { total: 978, present: 0, absent: 978, percentage: 0 };
   }, [convexStats]);
+
+  // Trigger celebratory guest greeting
+  const triggerGuestGreeting = useCallback((guest: Guest) => {
+    setCurrentGuest(guest);
+    setIsGreeting(true);
+    setGreetingKey((prev) => prev + 1);
+    setIsCounterBumped(true);
+    setTimeout(() => setIsCounterBumped(false), 1200);
+
+    // Play fanfare chime
+    playWelcomeSound();
+
+    if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+    fallbackTimerRef.current = setTimeout(() => {
+      setIsGreeting(false);
+      setCurrentGuest(null);
+    }, 6000);
+  }, []);
+
+  // Hardware QR Scanner Listener (Dongle 2.4G, Bluetooth, & USB Wired)
+  // Connects immediately when the display page opens
+  useEffect(() => {
+    const handleKeyDown = async (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+        return;
+      }
+
+      const now = Date.now();
+      const elapsed = now - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = now;
+
+      if (e.key === 'Enter') {
+        const scannedCode = hardwareScanBufferRef.current.trim();
+        hardwareScanBufferRef.current = '';
+
+        if (scannedCode.length >= 2 && !isProcessingScanRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          isProcessingScanRef.current = true;
+          setLastScannedCode(scannedCode);
+
+          try {
+            // Check-in via Convex Mutation
+            const res = await checkinMutation({ query: scannedCode, method: 'Scanner QR (Display)' });
+
+            if (res.status === 'success' && res.guest) {
+              const guestData = res.guest as Guest;
+              triggerGuestGreeting(guestData);
+
+              // Sync to Google Spreadsheet & Pusher
+              fetch('/api/checkin', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: scannedCode, method: 'Scanner QR (Display)' }),
+              }).catch((err) => console.error('[Display Scan Sync]', err));
+            } else if (res.status === 'duplicate' && res.guest) {
+              // Greet even on duplicate so guest is warmly acknowledged
+              triggerGuestGreeting(res.guest as Guest);
+            }
+          } catch (err) {
+            console.error('[Display Hardware QR Scan Error]:', err);
+          } finally {
+            setTimeout(() => {
+              isProcessingScanRef.current = false;
+            }, 1000);
+          }
+        }
+        return;
+      }
+
+      // Buffer single printable characters
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (elapsed > 220) {
+          hardwareScanBufferRef.current = e.key;
+        } else {
+          hardwareScanBufferRef.current += e.key;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [checkinMutation, triggerGuestGreeting]);
+
+  // Real-time Pusher Subscription (dual-redundant arrival from /scanner or smartphone)
+  useEffect(() => {
+    const key = process.env.NEXT_PUBLIC_PUSHER_KEY || '2d0c35da6d6434f594d5';
+    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap1';
+    if (!key) return;
+
+    try {
+      const pusher = new Pusher(key, { cluster });
+      const channel = pusher.subscribe('wedding-checkin');
+
+      channel.bind('guest:checkin', (data: { guest: Guest; stats?: any }) => {
+        if (data?.guest) {
+          triggerGuestGreeting(data.guest);
+        }
+      });
+
+      return () => {
+        channel.unbind_all();
+        channel.unsubscribe();
+        pusher.disconnect();
+      };
+    } catch (err) {
+      console.warn('[Display Pusher] Init error:', err);
+    }
+  }, [triggerGuestGreeting]);
 
   // Live count bump animation when checkin occurs
   useEffect(() => {
@@ -71,9 +189,7 @@ export default function DisplayPage() {
     return () => clearInterval(interval);
   }, []);
 
-  // Convex Reactive Real-time trigger:
-  // Driven entirely by Convex backend queue & scheduler!
-  // Each guest is guaranteed to appear for 5 seconds, followed in order by queued arrivals.
+  // Convex Reactive Real-time trigger from display_queue:
   useEffect(() => {
     if (!displayState) return;
 
@@ -81,7 +197,7 @@ export default function DisplayPage() {
       if (lastActiveIdRef.current !== displayState.active._id) {
         lastActiveIdRef.current = displayState.active._id;
 
-        setCurrentGuest({
+        const guestObj: Guest = {
           id: displayState.active.guest_id,
           no: 0,
           name: displayState.active.name,
@@ -92,22 +208,9 @@ export default function DisplayPage() {
           checkin_method: displayState.active.method,
           is_walkin: displayState.active.guest_id.startsWith('WALK'),
           pax: displayState.active.pax,
-        });
+        };
 
-        setIsGreeting(true);
-        setGreetingKey((prev) => prev + 1);
-
-        // Play celebratory chime/fanfare
-        playWelcomeSound();
-
-        // Safety fallback timer (in case backend scheduler network lags, gracefully return after 6.5s)
-        if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
-        fallbackTimerRef.current = setTimeout(() => {
-          if (!displayState.queueCount && !displayState.active) {
-            setIsGreeting(false);
-            setCurrentGuest(null);
-          }
-        }, 6500);
+        triggerGuestGreeting(guestObj);
       }
     } else {
       if (lastActiveIdRef.current !== null) {
@@ -117,7 +220,7 @@ export default function DisplayPage() {
         setCurrentGuest(null);
       }
     }
-  }, [displayState]);
+  }, [displayState, triggerGuestGreeting]);
 
   // Floating gold particles
   const particles = useMemo(() => {
@@ -189,6 +292,14 @@ export default function DisplayPage() {
 
       {/* Top Indicators */}
       <div className="top-indicators">
+        {/* Hardware Scanner Status */}
+        <div className="scanner-status-indicator" title="Scanner QR Fisik (Dongle 2.4G, Bluetooth, USB) terhubung & aktif otomatis">
+          <span className="scanner-status-dot"></span>
+          <span className="material-symbols-outlined" style={{ fontSize: '0.95rem' }}>
+            qr_code_scanner
+          </span>
+          <span>Scanner QR: Terhubung</span>
+        </div>
         <div
           className={`audio-indicator ${audioReady ? 'active' : 'inactive'}`}
           onClick={(e) => {
@@ -231,7 +342,7 @@ export default function DisplayPage() {
             <span className="material-symbols-outlined" style={{ fontSize: '1.4rem', color: 'var(--gold-primary)' }}>
               qr_code_scanner
             </span>
-            <span>Silakan scan QR Code undangan Anda di meja penerima tamu</span>
+            <span>Scanner QR Terhubung (Dongle/BT/USB) • Scan Undangan Langsung Kapan Saja</span>
           </div>
 
           {/* Live Scanner Counting (Simple seperti jam, icon sejajar dengan angka) */}

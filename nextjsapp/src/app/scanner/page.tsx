@@ -701,11 +701,11 @@ export default function ScannerPage() {
                         Scanner Siap Membaca Kode QR
                       </div>
                       <div className="live-status-desc">
-                        Arahkan moncong scanner ke QR tamu. Otomatis check-in tanpa klik apapun.
+                        Arahkan scanner ke QR tamu.
                       </div>
                       {lastHardwareScanText && (
                         <div className="live-status-last-code">
-                          Terakhir discan: <code>{lastHardwareScanText}</code>
+                          Tamu terakhir discan: <code>{lastHardwareScanText}</code>
                         </div>
                       )}
                     </div>

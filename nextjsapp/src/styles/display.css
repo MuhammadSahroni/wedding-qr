@@ -590,6 +590,36 @@
   animation: pulseAudio 2s infinite ease-in-out;
 }
 
+.scanner-status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  background: rgba(76, 175, 80, 0.12);
+  color: #2E7D32;
+  border: 1px solid rgba(76, 175, 80, 0.35);
+  box-shadow: 0 0 10px rgba(76, 175, 80, 0.15);
+  user-select: none;
+}
+
+.scanner-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #4CAF50;
+  box-shadow: 0 0 6px #4CAF50;
+  animation: pulseDot 2s infinite ease-in-out;
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.85); }
+}
+
 @keyframes pulseAudio {
 
   0%,
