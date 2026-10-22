@@ -23,9 +23,8 @@
   --text-muted: #7A6F5F;
 }
 
-* {
-  margin: 0;
-  padding: 0;
+.display-container,
+.display-container * {
   box-sizing: border-box;
 }
 

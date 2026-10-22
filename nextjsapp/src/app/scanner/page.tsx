@@ -26,6 +26,13 @@ export default function ScannerPage() {
   const [showMejaQrModal, setShowMejaQrModal] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
 
+  // Hardware Scanner State (Dongle 2.4G, Bluetooth, USB)
+  const [hardwareScannerActive, setHardwareScannerActive] = useState(true);
+  const [lastHardwareScanText, setLastHardwareScanText] = useState('');
+  const [showHardwareGuide, setShowHardwareGuide] = useState(false);
+  const [hardwareTestInput, setHardwareTestInput] = useState('');
+  const [hardwareIndicatorActive, setHardwareIndicatorActive] = useState(false);
+
   // Walk-In state
   const [showWalkinModal, setShowWalkinModal] = useState(false);
   const [walkinName, setWalkinName] = useState('');
@@ -61,6 +68,9 @@ export default function ScannerPage() {
   const scanCooldownRef = useRef(false);
   const resultTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isStartingCameraRef = useRef(false);
+  const hardwareScanBufferRef = useRef<string>('');
+  const lastKeyTimeRef = useRef<number>(0);
+  const hardwareTestInputRef = useRef<HTMLInputElement>(null);
 
   // Clock
   useEffect(() => {
@@ -151,6 +161,139 @@ export default function ScannerPage() {
       }, 1500);
     }
   }, [isProcessing, checkinMutation]);
+
+  // Process Hardware Scanner QR scan result (Dongle, Bluetooth, USB) via Convex mutation
+  const processHardwareScan = useCallback(async (rawText: string) => {
+    if (isProcessing || scanCooldownRef.current) return;
+    if (!rawText || !rawText.trim()) return;
+
+    const trimmed = rawText.trim();
+    setIsProcessing(true);
+    scanCooldownRef.current = true;
+    setLastHardwareScanText(trimmed);
+
+    // Flash hardware scanner indicator
+    setHardwareIndicatorActive(true);
+    setTimeout(() => setHardwareIndicatorActive(false), 900);
+
+    try {
+      const res = await checkinMutation({ query: trimmed, method: 'Scanner QR' });
+
+      if (res.status === 'success') {
+        playSuccess();
+        const guestData = res.guest as Guest;
+        setSuccessModalGuest(guestData);
+        setScanResult({
+          type: 'success',
+          guest: guestData,
+          message: res.message || 'Scan QR Berhasil (Scanner Hardware)',
+        });
+        setLastGuest(guestData);
+
+        // Sync to Google Spreadsheet & Pusher
+        fetch('/api/checkin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: trimmed, method: 'Scanner QR' }),
+        }).catch((e) => console.error('Sheet checkin sync error:', e));
+      } else if (res.status === 'duplicate') {
+        playDuplicate();
+        setSuccessModalGuest(null);
+        setScanResult({
+          type: 'duplicate',
+          guest: (res.guest as Guest) || null,
+          message: res.message || 'Tamu sudah melakukan check-in sebelumnya.',
+        });
+        if (res.guest) setLastGuest(res.guest as Guest);
+      } else {
+        playError();
+        setSuccessModalGuest(null);
+        setScanResult({
+          type: 'error',
+          guest: null,
+          message: res.message || 'Tamu Tidak Ditemukan',
+        });
+      }
+
+      if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
+      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 6000);
+    } catch (e) {
+      console.error('Hardware Scanner processing error:', e);
+      playError();
+      setSuccessModalGuest(null);
+      setScanResult({
+        type: 'error',
+        guest: null,
+        message: 'Gagal memproses Scanner QR. Periksa koneksi internet.',
+      });
+      if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
+      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
+    } finally {
+      setIsProcessing(false);
+      setTimeout(() => {
+        scanCooldownRef.current = false;
+      }, 1200);
+    }
+  }, [isProcessing, checkinMutation]);
+
+  // Global Key Listener for Hardware Scanner (USB Cable, 2.4G Dongle & Bluetooth HID)
+  useEffect(() => {
+    if (!hardwareScannerActive) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      const isInputOrTextarea = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
+      const isSearchInput = target && target.id === 'search-input';
+      const isHardwareInput = target && target.id === 'hardware-scanner-input';
+
+      // Ignore normal inputs other than search & hardware test input (e.g. walkin modal inputs)
+      if (isInputOrTextarea && !isSearchInput && !isHardwareInput) {
+        return;
+      }
+
+      const now = Date.now();
+      const elapsed = now - lastKeyTimeRef.current;
+      lastKeyTimeRef.current = now;
+
+      if (e.key === 'Enter') {
+        const buffered = hardwareScanBufferRef.current.trim();
+        hardwareScanBufferRef.current = '';
+
+        if (buffered.length >= 2) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          if (isSearchInput) {
+            setSearchQuery('');
+            searchInputRef.current?.blur();
+          }
+
+          if (isHardwareInput) {
+            setHardwareTestInput('');
+          }
+
+          processHardwareScan(buffered);
+        }
+        return;
+      }
+
+      // Buffer printable characters
+      if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        // Scanners typically send keystrokes within 20-50ms
+        // If interval is longer than 220ms and not in hardware input, start a new buffer
+        if (elapsed > 220 && !isHardwareInput) {
+          hardwareScanBufferRef.current = e.key;
+        } else {
+          hardwareScanBufferRef.current += e.key;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [hardwareScannerActive, processHardwareScan]);
 
   // Camera Management
   const startCamera = useCallback(async () => {
@@ -439,18 +582,20 @@ export default function ScannerPage() {
         {/* KOLOM 1: Camera Scanner & Last Scan Result */}
         <div className="grid-column grid-col-scanner">
           {/* Card 1: Camera Scanner */}
+          {/* Card 1: Camera Scanner & Hardware QR Scanner */}
           <section className="app-card camera-scanner-card">
             <div className="card-header">
-              <span className="material-symbols-outlined card-header-icon">photo_camera</span>
+              <span className="material-symbols-outlined card-header-icon">qr_code_scanner</span>
               <div>
-                <h2>Scan QR Code</h2>
+                <h2>Scan QR Code Undangan</h2>
                 <p className="card-subtitle">
-                  Arahkan kamera ke QR Code kartu undangan tamu untuk melakukan check-in
+                  Pindai QR tamu menggunakan Kamera perangkat atau Scanner QR Hardware
                 </p>
               </div>
             </div>
 
-            <div className="scanner-actions">
+            {/* Bagian 1: Tombol Kamera & Kamera Viewfinder */}
+            <div className="camera-control-wrapper">
               <button
                 type="button"
                 className={`btn btn-camera ${cameraActive ? 'active' : ''}`}
@@ -467,10 +612,146 @@ export default function ScannerPage() {
                   </>
                 )}
               </button>
+
+              <div className="camera-section" style={{ display: cameraActive ? 'block' : 'none' }}>
+                <div id="qr-reader" style={{ width: '100%' }}></div>
+              </div>
             </div>
 
-            <div className="camera-section" style={{ display: cameraActive ? 'block' : 'none' }}>
-              <div id="qr-reader" style={{ width: '100%' }}></div>
+            {/* Separator / Divider */}
+            <div className="scanner-divider">
+              <span>Atau Scan Dengan Alat Scanner</span>
+            </div>
+
+            {/* Bagian 2: Scanner QR Hardware Card */}
+            <div className={`hardware-scanner-card ${hardwareScannerActive ? 'active' : 'inactive'} ${hardwareIndicatorActive ? 'pulse-detected' : ''}`}>
+              <div className="hardware-scanner-header">
+                <div className="hardware-scanner-title-area">
+                  <div className="hardware-scanner-icon-badge">
+                    <span className="material-symbols-outlined">barcode_scanner</span>
+                  </div>
+                  <div>
+                    <div className="hardware-title-row">
+                      <h3 className="hardware-scanner-title">Scanner QR Hardware</h3>
+                      <span className={`status-pill ${hardwareScannerActive ? 'online' : 'offline'}`}>
+                        <span className="status-dot"></span>
+                        {hardwareScannerActive ? 'Siap Scan' : 'Nonaktif'}
+                      </span>
+                    </div>
+                    <p className="hardware-scanner-subtitle">
+                      Mendukung 3 Mode: <strong>Dongle 2.4G</strong>, <strong>Bluetooth</strong>, &amp; <strong>Kabel USB</strong>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="hardware-header-actions">
+                  <button
+                    type="button"
+                    className="btn-guide-trigger"
+                    onClick={() => setShowHardwareGuide(true)}
+                    title="Lihat Petunjuk 3 Cara Koneksi"
+                  >
+                    <span className="material-symbols-outlined">help_outline</span>
+                    <span>Panduan</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn-toggle-hardware ${hardwareScannerActive ? 'btn-active' : 'btn-inactive'}`}
+                    onClick={() => {
+                      setHardwareScannerActive(!hardwareScannerActive);
+                      if (!hardwareScannerActive) {
+                        setTimeout(() => hardwareTestInputRef.current?.focus(), 100);
+                      }
+                    }}
+                    title={hardwareScannerActive ? "Nonaktifkan Scanner Hardware" : "Aktifkan Scanner Hardware"}
+                  >
+                    <span className="material-symbols-outlined">
+                      {hardwareScannerActive ? 'sensors' : 'sensors_off'}
+                    </span>
+                    <span>{hardwareScannerActive ? 'Terhubung' : 'Hubungkan'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {hardwareScannerActive && (
+                <div className="hardware-scanner-body">
+                  {/* Mode badges in a 3-column grid */}
+                  <div className="hardware-modes-grid">
+                    <div className="mode-chip">
+                      <span className="material-symbols-outlined">cell_tower</span>
+                      <span>Dongle 2.4G</span>
+                    </div>
+                    <div className="mode-chip">
+                      <span className="material-symbols-outlined">bluetooth</span>
+                      <span>Bluetooth</span>
+                    </div>
+                    <div className="mode-chip">
+                      <span className="material-symbols-outlined">usb</span>
+                      <span>Kabel USB</span>
+                    </div>
+                  </div>
+
+                  {/* Live Status Listening Box */}
+                  <div className="hardware-live-status-box">
+                    <div className="live-status-icon-wrap">
+                      <span className="material-symbols-outlined live-radar-icon">sensors</span>
+                    </div>
+                    <div className="live-status-content">
+                      <div className="live-status-title">
+                        Scanner Siap Membaca Kode QR
+                      </div>
+                      <div className="live-status-desc">
+                        Arahkan moncong scanner ke QR tamu. Otomatis check-in tanpa klik apapun.
+                      </div>
+                      {lastHardwareScanText && (
+                        <div className="live-status-last-code">
+                          Terakhir discan: <code>{lastHardwareScanText}</code>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Direct Test & Focus Input */}
+                  <div className="hardware-input-wrapper">
+                    <div className="hardware-input-icon">
+                      <span className="material-symbols-outlined">qr_code</span>
+                    </div>
+                    <input
+                      ref={hardwareTestInputRef}
+                      type="text"
+                      id="hardware-scanner-input"
+                      className="hardware-scanner-input"
+                      placeholder="Uji coba manual (ketik kode lalu Enter)..."
+                      value={hardwareTestInput}
+                      onChange={(e) => setHardwareTestInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && hardwareTestInput.trim()) {
+                          e.preventDefault();
+                          const val = hardwareTestInput.trim();
+                          setHardwareTestInput('');
+                          processHardwareScan(val);
+                        }
+                      }}
+                    />
+                    {hardwareTestInput && (
+                      <button
+                        type="button"
+                        className="btn-hardware-send"
+                        onClick={() => {
+                          const val = hardwareTestInput.trim();
+                          if (val) {
+                            setHardwareTestInput('');
+                            processHardwareScan(val);
+                          }
+                        }}
+                        title="Check-In Manual"
+                      >
+                        Check-In
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </section>
 
@@ -951,6 +1232,82 @@ export default function ScannerPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Panduan Koneksi Scanner QR Hardware (3 Cara) */}
+      {showHardwareGuide && (
+        <div className="modal-guide-overlay" onClick={() => setShowHardwareGuide(false)}>
+          <div className="modal-guide-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-guide-header">
+              <h3>
+                <span className="material-symbols-outlined" style={{ color: '#C5A55A' }}>devices</span>
+                Panduan Koneksi Scanner QR
+              </h3>
+              <button
+                type="button"
+                className="btn-guide-close"
+                onClick={() => setShowHardwareGuide(false)}
+                title="Tutup"
+              >
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <p style={{ fontSize: '13px', color: '#7A6F5F', marginBottom: '16px' }}>
+              Scanner barcode/QR eksternal Anda dapat dihubungkan ke laptop/komputer dengan salah satu dari 3 cara berikut:
+            </p>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon">
+                <span className="material-symbols-outlined">cell_tower</span>
+              </div>
+              <div className="guide-step-text">
+                <h4>Cara 1: USB Wireless Dongle 2.4G (Paling Mudah)</h4>
+                <p>
+                  Tancapkan USB Dongle kecil bawaan scanner ke port USB laptop Anda. Nyalakan alat scanner, perangkat langsung otomatis terhubung dan siap digunakan tanpa perlu install software.
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon">
+                <span className="material-symbols-outlined">bluetooth</span>
+              </div>
+              <div className="guide-step-text">
+                <h4>Cara 2: Bluetooth (Tanpa Dongle / Bisa Tablet &amp; HP)</h4>
+                <p>
+                  Nyalakan Bluetooth di laptop/tablet. Masuk ke mode pairing di scanner (biasanya tekan tombol atau scan barcode &apos;Bluetooth HID&apos; di buku manual). Pilih nama scanner di daftar Bluetooth laptop lalu pasangkan (Pair).
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-step-card">
+              <div className="guide-step-icon">
+                <span className="material-symbols-outlined">usb</span>
+              </div>
+              <div className="guide-step-text">
+                <h4>Cara 3: Kabel USB (Wired Mode)</h4>
+                <p>
+                  Colokkan kabel USB dari scanner ke port USB laptop. Scanner akan otomatis aktif sebagai keyboard HID dan sekaligus mengisi daya baterai scanner saat acara berlangsung.
+                </p>
+              </div>
+            </div>
+
+            <div className="guide-note-box">
+              <strong>💡 Tips Panitia:</strong> Begitu status menunjukkan <em>&quot;Terhubung (Siap Scan)&quot;</em>, panitia cukup mengarahkan moncong scanner ke QR Code di kartu undangan tamu. Sistem akan otomatis check-in, memutar suara sukses, dan menampilkan data tamu seketika!
+            </div>
+
+            <div style={{ textAlign: 'right' }}>
+              <button
+                type="button"
+                className="btn-hardware-send"
+                onClick={() => setShowHardwareGuide(false)}
+                style={{ width: '100%', padding: '10px' }}
+              >
+                Mengerti &amp; Tutup Panduan
+              </button>
+            </div>
           </div>
         </div>
       )}

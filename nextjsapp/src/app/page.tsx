@@ -6,9 +6,12 @@ export default function HomePage() {
       {/* Decorative top bar */}
       <div className="h-2 bg-gradient-to-r from-[#C5A55A] via-[#E8D5A3] to-[#8B7635]" />
 
-      <main className="max-w-5xl mx-auto w-full px-6 py-12 flex-1 flex flex-col items-center justify-center">
+      <main 
+        style={{ marginLeft: 'auto', marginRight: 'auto', maxWidth: '64rem' }}
+        className="max-w-5xl mx-auto w-full px-6 py-10 flex-1 flex flex-col items-center justify-center"
+      >
         {/* Wedding Title Header */}
-        <div className="text-center mb-12">
+        <div className="text-center mb-10">
           <div className="inline-block px-4 py-1 mb-4 text-xs tracking-widest uppercase font-semibold text-[#8B7635] bg-[#E8D5A3]/40 rounded-full border border-[#C5A55A]/30">
             Resepsi Pernikahan
           </div>
@@ -28,7 +31,7 @@ export default function HomePage() {
         </div>
 
         {/* Main Navigation Modules */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full items-stretch">
           {/* Card 1: Scanner */}
           <Link
             href="/scanner"
@@ -42,7 +45,7 @@ export default function HomePage() {
                 Scanner Panitia
               </h2>
               <p className="text-sm text-[#7A6F5F] leading-relaxed">
-                Aplikasi scan kamera QR code untuk panitia di pintu masuk resepsi, dilengkapi pencarian manual dan sound feedback.
+                Aplikasi scan via kamera maupun Scanner QR Hardware (Dongle, Bluetooth, USB), dilengkapi pencarian &amp; audio feedback.
               </p>
             </div>
             <div className="mt-6 flex items-center gap-1 text-sm font-semibold text-[#C5A55A] group-hover:translate-x-1 transition-transform">
