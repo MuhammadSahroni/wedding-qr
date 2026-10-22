@@ -142,7 +142,7 @@ export default function ScannerPage() {
       }
 
       if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
-      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 6000);
+      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     } catch (e) {
       console.error('Scan processing error:', e);
       playError();
@@ -216,7 +216,7 @@ export default function ScannerPage() {
       }
 
       if (resultTimeoutRef.current) clearTimeout(resultTimeoutRef.current);
-      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 6000);
+      resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     } catch (e) {
       console.error('Hardware Scanner processing error:', e);
       playError();

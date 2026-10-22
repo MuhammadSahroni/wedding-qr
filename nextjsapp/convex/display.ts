@@ -29,8 +29,8 @@ export async function enqueueGuestForDisplay(
 
   let hasActive = false;
   for (const item of activeItems) {
-    // If the active item started within the last 7 seconds, it's still actively showing
-    if (now - (item.displayStartedAt ?? 0) < 7000) {
+    // If the active item started within the last 6 seconds (5s display + 1s grace), it's still actively showing
+    if (now - (item.displayStartedAt ?? 0) < 6000) {
       hasActive = true;
     } else {
       // Expired/stale active item, mark completed
@@ -117,13 +117,13 @@ export const watchdogQueue = internalMutation({
       .first();
 
     if (queuedFirst) {
-      // Check if displaying item is absent or stale (> 7000ms)
+      // Check if displaying item is absent or stale (> 6000ms: 5s display + 1s grace)
       const displaying = await ctx.db
         .query("display_queue")
         .withIndex("by_status", (q) => q.eq("status", "displaying"))
         .first();
 
-      const isStale = displaying && (now - (displaying.displayStartedAt ?? 0) > 7000);
+      const isStale = displaying && (now - (displaying.displayStartedAt ?? 0) > 6000);
 
       if (!displaying || isStale) {
         if (displaying) {

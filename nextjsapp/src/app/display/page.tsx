@@ -50,7 +50,7 @@ export default function DisplayPage() {
     fallbackTimerRef.current = setTimeout(() => {
       setIsGreeting(false);
       setCurrentGuest(null);
-    }, 6000);
+    }, 5000);
   }, []);
 
   // Hardware QR Scanner Listener (Dongle 2.4G, Bluetooth, & USB Wired)
