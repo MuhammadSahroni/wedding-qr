@@ -52,8 +52,6 @@
   box-sizing: border-box;
 }
 
-<<<<<<< HEAD
-=======
 html, body {
   width: 100%;
   max-width: 100%;
@@ -81,22 +79,18 @@ body {
   overflow-x: hidden;
 }
 
->>>>>>> parent of 2b62b81 (feat: add scanner and display pages with custom CSS styles)
 .app {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-<<<<<<< HEAD
   background: var(--beige);
   color: var(--text-body);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
-=======
   overflow-x: hidden;
->>>>>>> parent of 2b62b81 (feat: add scanner and display pages with custom CSS styles)
   box-sizing: border-box;
 }
 
