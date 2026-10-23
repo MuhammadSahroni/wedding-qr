@@ -80,8 +80,8 @@ export function subscribeDisplayEvents(listener: (event: DisplayEvent) => void):
 
 export function getDisplayState(): DisplayStateSnapshot {
   const now = Date.now();
-  // Active guest expires after 5.5 seconds
-  const isActive = bus.activeGuest && (now - bus.displayStartedAt < 5500);
+  // Active guest expires after 3 seconds
+  const isActive = bus.activeGuest && (now - bus.displayStartedAt < 3000);
 
   const lastEvent = bus.recentEvents[bus.recentEvents.length - 1];
 
@@ -94,8 +94,9 @@ export function getDisplayState(): DisplayStateSnapshot {
 }
 
 export function getEventsSince(lastId?: string): DisplayEvent[] {
-  if (!lastId) return bus.recentEvents.slice(-5);
+  // Never return past events if no lastId is provided
+  if (!lastId) return [];
   const index = bus.recentEvents.findIndex((e) => e.id === lastId);
-  if (index === -1) return bus.recentEvents.slice(-5);
+  if (index === -1) return [];
   return bus.recentEvents.slice(index + 1);
 }

@@ -211,6 +211,18 @@ export const checkin = mutation({
       method: checkinMethod,
     });
 
+    // Broadcast to Pusher from Convex Cloud (server-side) so ANY device
+    // scanning (tablet, iPad, PC) triggers the display screen across WAN.
+    await ctx.scheduler.runAfter(0, internal.pusherSync.broadcastCheckinToPusher, {
+      guestId: target.id,
+      name: target.name,
+      category: target.category,
+      pax: target.pax,
+      is_walkin: target.is_walkin ?? false,
+      checked_in_at: now,
+      checkin_method: checkinMethod,
+    });
+
     // Sync directly to Google Spreadsheet from Convex Cloud!
     await ctx.scheduler.runAfter(0, internal.sheetsSync.syncCheckinToSheet, {
       guestId: target.id,
@@ -336,6 +348,17 @@ export const addWalkin = mutation({
       pax: newGuest.pax,
       checked_in_at: now,
       method: method,
+    });
+
+    // Broadcast walk-in to Pusher from Convex Cloud (server-side)
+    await ctx.scheduler.runAfter(0, internal.pusherSync.broadcastCheckinToPusher, {
+      guestId: newId,
+      name: trimmed,
+      category: newGuest.category,
+      pax: newGuest.pax,
+      is_walkin: true,
+      checked_in_at: now,
+      checkin_method: method,
     });
 
     // Sync walk-in directly to Google Spreadsheet from Convex Cloud!

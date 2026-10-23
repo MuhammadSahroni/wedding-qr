@@ -11,6 +11,7 @@
 import type * as crons from "../crons.js";
 import type * as display from "../display.js";
 import type * as guests from "../guests.js";
+import type * as pusherSync from "../pusherSync.js";
 import type * as sheetsSync from "../sheetsSync.js";
 
 import type {
@@ -23,6 +24,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   display: typeof display;
   guests: typeof guests;
+  pusherSync: typeof pusherSync;
   sheetsSync: typeof sheetsSync;
 }>;
 

@@ -29,8 +29,8 @@ export async function enqueueGuestForDisplay(
 
   let hasActive = false;
   for (const item of activeItems) {
-    // If the active item started within the last 6 seconds (5s display + 1s grace), it's still actively showing
-    if (now - (item.displayStartedAt ?? 0) < 6000) {
+    // If the active item started within the last 4 seconds (3s display + 1s grace), it's still actively showing
+    if (now - (item.displayStartedAt ?? 0) < 4000) {
       hasActive = true;
     } else {
       // Expired/stale active item, mark completed
@@ -47,8 +47,8 @@ export async function enqueueGuestForDisplay(
       displayStartedAt: now,
     });
 
-    // Schedule advancing the queue in exactly 5000ms via Convex Scheduler!
-    await ctx.scheduler.runAfter(5000, internal.display.advanceQueue, {});
+    // Schedule advancing the queue in exactly 3000ms via Convex Scheduler!
+    await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
   } else {
     // Active display is already running! Place this guest into the waiting queue.
     await ctx.db.insert("display_queue", {
@@ -86,8 +86,8 @@ export const advanceQueue = internalMutation({
       .first();
 
     if (nextItem) {
-      // Provide a 2000ms jeda (idle screen) before showing the next queued guest
-      await ctx.scheduler.runAfter(2000, internal.display.displayNextQueuedItem, {});
+      // Provide a 1000ms jeda (idle screen) before showing the next queued guest
+      await ctx.scheduler.runAfter(1000, internal.display.displayNextQueuedItem, {});
     }
   },
 });
@@ -109,8 +109,8 @@ export const displayNextQueuedItem = internalMutation({
         displayStartedAt: now,
       });
 
-      // Display this guest for 5000ms, then advance queue
-      await ctx.scheduler.runAfter(5000, internal.display.advanceQueue, {});
+      // Display this guest for 3000ms, then advance queue
+      await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
     }
   },
 });
@@ -132,13 +132,13 @@ export const watchdogQueue = internalMutation({
       .first();
 
     if (queuedFirst) {
-      // Check if displaying item is absent or stale (> 6000ms: 5s display + 1s grace)
+      // Check if displaying item is absent or stale (> 4000ms: 3s display + 1s grace)
       const displaying = await ctx.db
         .query("display_queue")
         .withIndex("by_status", (q) => q.eq("status", "displaying"))
         .first();
 
-      const isStale = displaying && (now - (displaying.displayStartedAt ?? 0) > 6000);
+      const isStale = displaying && (now - (displaying.displayStartedAt ?? 0) > 4000);
 
       if (!displaying || isStale) {
         if (displaying) {
@@ -150,7 +150,7 @@ export const watchdogQueue = internalMutation({
           displayStartedAt: now,
         });
 
-        await ctx.scheduler.runAfter(5000, internal.display.advanceQueue, {});
+        await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
       }
     }
 

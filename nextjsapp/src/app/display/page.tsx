@@ -37,11 +37,12 @@ export default function DisplayPage() {
   const lastPolledEventIdRef = useRef<string>('');
   const hasPolledInitiallyRef = useRef<boolean>(false);
 
-  // Queue and timing refs for strictly 5s display + 2s jeda between queued guests
+  // Queue and timing refs for strictly 3s display + 1s jeda between queued guests
   const clientQueueRef = useRef<Guest[]>([]);
   const isDisplayingGreetingRef = useRef<boolean>(false);
   const greetingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const jedaTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const seenGuestsRef = useRef<Set<string>>(new Set());
 
   // Overall online status is true if ANY communication channel is active
   const isConvexConnected = displayState !== undefined;
@@ -54,7 +55,7 @@ export default function DisplayPage() {
     return { total: 978, present: 0, absent: 978, percentage: 0 };
   }, [convexStats, localStats]);
 
-  // Display a single guest card for exactly 5000ms, then wait 2000ms jeda before next queue item
+  // Display a single guest card for exactly 3000ms (3 seconds), then wait 1000ms jeda before next queue item
   const showGuestCard = useCallback((guest: Guest) => {
     isDisplayingGreetingRef.current = true;
     setCurrentGuest(guest);
@@ -69,13 +70,13 @@ export default function DisplayPage() {
     if (greetingTimeoutRef.current) clearTimeout(greetingTimeoutRef.current);
     if (jedaTimeoutRef.current) clearTimeout(jedaTimeoutRef.current);
 
-    // 1. Display guest card for exactly 5 seconds
+    // 1. Display guest card for exactly 3 seconds
     greetingTimeoutRef.current = setTimeout(() => {
       // Close greeting card -> Return to idle screen
       setIsGreeting(false);
       setCurrentGuest(null);
 
-      // 2. Provide 2 seconds JEDA (idle screen pause) before displaying next queued guest
+      // 2. Provide 1 second JEDA (idle screen pause) before displaying next queued guest
       jedaTimeoutRef.current = setTimeout(() => {
         if (clientQueueRef.current.length > 0) {
           const nextGuest = clientQueueRef.current.shift()!;
@@ -85,13 +86,31 @@ export default function DisplayPage() {
           isDisplayingGreetingRef.current = false;
           setQueueCount(0);
         }
-      }, 2000);
-    }, 5000);
+      }, 1000);
+    }, 3000);
   }, []);
 
   // Trigger guest greeting with queue and deduplication
   const triggerGuestGreeting = useCallback((guest: Guest, eventKey?: string) => {
     if (!guest || !guest.name) return;
+
+    // 1. NEVER display a guest who already checked in previously in this session
+    if (seenGuestsRef.current.has(guest.id)) {
+      return;
+    }
+
+    // 2. NEVER display a guest whose check-in happened more than 30 seconds ago
+    // (Convex reactive subscriptions can take a few seconds to deliver cross-device;
+    //  we use 30s window so late arrivals still show while replayed history is skipped)
+    if (guest.is_present && guest.checked_in_at) {
+      const checkinTime = new Date(guest.checked_in_at).getTime();
+      if (!isNaN(checkinTime) && Date.now() - checkinTime > 30000) {
+        return;
+      }
+    }
+
+    // Mark as seen permanently so duplicate scans never show
+    seenGuestsRef.current.add(guest.id);
 
     // Deduplicate rapid triggers from multiple engines
     const dedupKey = eventKey || `${guest.id}_${guest.checked_in_at || ''}`;
@@ -252,8 +271,9 @@ export default function DisplayPage() {
   useEffect(() => {
     if (!displayState || !displayState.active) return;
 
-    // Only process if this active item is fresh (< 4000ms old) to avoid replaying previous sessions
-    const isRecent = Date.now() - (displayState.active.displayStartedAt || 0) < 4000;
+    // Only process if this active item is fresh (<15s) to avoid replaying previous sessions
+    // 15s window accommodates Convex reactive subscription delivery latency across devices
+    const isRecent = Date.now() - (displayState.active.displayStartedAt || 0) < 15000;
     if (lastActiveIdRef.current !== displayState.active._id && isRecent) {
       lastActiveIdRef.current = displayState.active._id;
 
@@ -592,7 +612,7 @@ export default function DisplayPage() {
               )}
             </div>
 
-            {/* Progress bar (5 seconds) */}
+            {/* Progress bar (3 seconds) */}
             <div className="greeting-progress">
               <div className="greeting-progress-bar" />
             </div>
