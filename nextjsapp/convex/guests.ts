@@ -47,6 +47,52 @@ export const getLatestEvent = query({
   },
 });
 
+/**
+ * Reactive query for the Display TV screen.
+ * Returns the most recent checkin event (with its timestamp) and current stats.
+ * The display page subscribes to this — whenever a new guest checks in,
+ * Convex pushes the update to ALL subscribed display devices in real-time,
+ * regardless of which device triggered the checkin.
+ *
+ * Unlike display_queue (which transitions through states quickly),
+ * checkin_events are permanent records — no race with display_queue timing.
+ */
+export const getLatestCheckinForDisplay = query({
+  args: {},
+  handler: async (ctx) => {
+    // Most recent checkin event
+    const latestEvent = await ctx.db
+      .query("checkin_events")
+      .withIndex("by_timestamp")
+      .order("desc")
+      .take(1);
+
+    // Stats: use indexed queries for efficiency
+    const allGuests = await ctx.db.query("guests").collect();
+    const total = allGuests.length;
+    const present = allGuests.filter((g) => g.is_present).length;
+
+    return {
+      latestEvent: latestEvent.length > 0 ? {
+        _id: latestEvent[0]._id,
+        guest_id: latestEvent[0].guest_id,
+        name: latestEvent[0].name,
+        category: latestEvent[0].category,
+        pax: latestEvent[0].pax,
+        checked_in_at: latestEvent[0].checked_in_at,
+        method: latestEvent[0].method,
+        timestamp: latestEvent[0].timestamp,
+      } : null,
+      stats: {
+        total,
+        present,
+        absent: total - present,
+        percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+      },
+    };
+  },
+});
+
 export const search = query({
   args: { query: v.string() },
   handler: async (ctx, args) => {
