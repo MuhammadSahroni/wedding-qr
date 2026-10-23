@@ -634,8 +634,8 @@ export default function ScannerPage() {
 
       {/* Main Content */}
       <main className="main-content-grid">
-        {/* KOLOM 1: Camera Scanner & Last Scan Result */}
-        <div className="grid-column grid-col-scanner">
+        {/* LEFT COLUMN: Camera Scanner & Last Scan Result */}
+        <div className="grid-column">
           {/* Card 1: Camera Scanner */}
           {/* Card 1: Camera Scanner & Hardware QR Scanner */}
           <section className="app-card camera-scanner-card">
@@ -873,8 +873,8 @@ export default function ScannerPage() {
           </section>
         </div>
 
-        {/* KOLOM 2: Search / Manual Input */}
-        <div className="grid-column grid-col-search">
+        {/* RIGHT COLUMN: Search / Manual Input & Recent Checkins */}
+        <div className="grid-column">
           {/* Card 3: Search / Manual Input */}
           <section className="app-card search-input-card">
             <div className="card-header">
@@ -978,10 +978,7 @@ export default function ScannerPage() {
               </div>
             )}
           </section>
-        </div>
 
-        {/* KOLOM 3: Recent Checkins */}
-        <div className="grid-column grid-col-recent">
           {/* Card 4: Recent Checkins */}
           <section className="app-card recent-checkins-card">
             <div className="card-header">

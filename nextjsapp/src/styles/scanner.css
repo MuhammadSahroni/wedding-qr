@@ -52,17 +52,51 @@
   box-sizing: border-box;
 }
 
+<<<<<<< HEAD
+=======
+html, body {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--beige);
+  color: var(--text-body);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  width: 100%;
+}
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+>>>>>>> parent of 2b62b81 (feat: add scanner and display pages with custom CSS styles)
 .app {
   width: 100%;
   max-width: 100%;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+<<<<<<< HEAD
   background: var(--beige);
   color: var(--text-body);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+=======
+  overflow-x: hidden;
+>>>>>>> parent of 2b62b81 (feat: add scanner and display pages with custom CSS styles)
   box-sizing: border-box;
 }
 
@@ -212,17 +246,17 @@
 }
 
 /* ============================================================
-   Main Layout: 3-Column Responsive Grid on Desktop
+   Main Layout: 2-Column Responsive Grid
    ============================================================ */
 .main-content-grid {
   flex: 1;
-  max-width: 1600px;
+  max-width: 1200px;
   width: 100%;
   margin: 0 auto;
   padding: 24px 20px 36px;
   display: grid;
-  grid-template-columns: 1fr 1.15fr 1fr;
-  gap: 20px;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: 24px;
   align-items: start;
   box-sizing: border-box;
 }
@@ -230,7 +264,7 @@
 .grid-column {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 24px;
   min-width: 0;
   width: 100%;
 }
@@ -714,7 +748,7 @@
 }
 
 .search-list {
-  max-height: 460px;
+  max-height: 320px;
   overflow-y: auto;
 }
 
@@ -1159,7 +1193,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  max-height: 480px;
+  max-height: 340px;
   overflow-y: auto;
 }
 
@@ -1351,7 +1385,7 @@
 }
 
 .footer-copyright {
-  max-width: 1600px;
+  max-width: 1200px;
   margin: 14px auto 0;
   text-align: center;
   font-size: 0.75rem;
@@ -1364,19 +1398,7 @@
    Responsive Layout & Mobile Optimization
    ============================================================ */
 
-/* Medium Screens & Small Laptops (<= 1200px) */
-@media (max-width: 1200px) and (min-width: 901px) {
-  .main-content-grid {
-    grid-template-columns: 1fr 1fr;
-    max-width: 1200px;
-  }
-
-  .grid-col-recent {
-    grid-column: span 2;
-  }
-}
-
-/* Tablet & Mobile Screens (<= 900px) */
+/* Tablet & Intermediate Screens (<= 900px) */
 @media (max-width: 900px) {
   .main-content-grid {
     grid-template-columns: 1fr;
@@ -1384,10 +1406,6 @@
     gap: 20px;
     width: 100%;
     box-sizing: border-box;
-  }
-
-  .grid-col-recent {
-    grid-column: span 1;
   }
 
   .app-header {
