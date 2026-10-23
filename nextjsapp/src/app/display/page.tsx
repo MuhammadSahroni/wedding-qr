@@ -5,7 +5,6 @@ import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../../convex/_generated/api';
 import { playWelcomeSound, initDisplayAudio, unlockAudio } from '@/lib/audio-display';
 import { Guest, Stats } from '@/lib/types';
-import Pusher from 'pusher-js';
 import '@/styles/display.css';
 
 export default function DisplayPage() {
@@ -19,36 +18,41 @@ export default function DisplayPage() {
   const [queueCount, setQueueCount] = useState<number>(0);
   const prevCountRef = useRef<number | null>(null);
 
-  // Connectivity states
-  const [isPusherConnected, setIsPusherConnected] = useState(false);
-
-  // ─── PRIMARY ENGINE: Convex Reactive Subscription ───────────────────────────
-  // This is the ONE reliable cross-device channel.
-  // `getLatestCheckinForDisplay` returns the newest checkin_events row + live stats.
-  // Convex pushes updates to ALL subscribed devices (display TV, tablets, phones)
-  // whenever ANY device triggers a checkin mutation.
+  // ─── PRIMARY & ONLY REAL-TIME ENGINE: Convex Reactive Subscription ─────────
+  // 100% murni Convex Cloud WebSocket reaktif lintas perangkat (TV, tablet, HP, iPad)
   const liveDisplay = useQuery(api.guests.getLatestCheckinForDisplay);
-
-  // Convex mutation for hardware scanner on this display device
   const checkinMutation = useMutation(api.guests.checkin);
 
+  // ─── CONFIGURATION ───────────────────────────────────────────────────────────
+  // Durasi tampilan kartu nama: 3 detik per tamu, langsung ganti ke nama berikutnya tanpa jeda
+  const DISPLAY_DURATION_MS = 3000;
+
+  // ─── Helper: Unique Key per Guest ────────────────────────────────────────────
+  const getGuestKey = useCallback((guest: Guest): string => {
+    if (guest.id && guest.id.trim()) {
+      return guest.id.trim().toUpperCase();
+    }
+    return (guest.name || '').trim().toLowerCase();
+  }, []);
+
   // ─── Refs ────────────────────────────────────────────────────────────────────
-  const lastShownEventIdRef = useRef<string | null>(null);
   const hardwareScanBufferRef = useRef<string>('');
   const lastKeyTimeRef = useRef<number>(0);
   const isProcessingScanRef = useRef<boolean>(false);
-  const seenPusherEventsRef = useRef<Set<string>>(new Set());
+  const isFirstRunRef = useRef<boolean>(true);
 
-  // Queue and timing refs for 3s display + 1s jeda between queued guests
+  // Set untuk melacak ID event yang sudah diproses di layar ini
+  const processedEventIdsRef = useRef<Set<string>>(new Set());
+  const currentGuestRef = useRef<Guest | null>(null);
+
+  // Queue and timing refs for 3s display + 0s gap between queued guests
   const clientQueueRef = useRef<Guest[]>([]);
   const isDisplayingGreetingRef = useRef<boolean>(false);
-  const greetingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const jedaTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const greetingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // ─── Connection status ───────────────────────────────────────────────────────
-  // Connected if Convex query has returned any value (including null)
-  const isConvexConnected = liveDisplay !== undefined;
-  const isOnline = isConvexConnected || isPusherConnected;
+  // Terhubung murni ke Convex Cloud (WebSocket realtime)
+  const isOnline = liveDisplay !== undefined;
 
   // ─── Stats from Convex ───────────────────────────────────────────────────────
   const stats: Stats = useMemo(() => {
@@ -56,10 +60,29 @@ export default function DisplayPage() {
     return { total: 978, present: 0, absent: 978, percentage: 0 };
   }, [liveDisplay]);
 
-  // ─── Display a single guest card for exactly 3s, then 1s jeda ───────────────
-  const showGuestCard = useCallback((guest: Guest) => {
+  // ─── Process next guest in queue (3s display, 0s gap if more guests in queue) ───
+  const processNextInQueue = useCallback(() => {
+    if (greetingTimerRef.current) {
+      clearTimeout(greetingTimerRef.current);
+      greetingTimerRef.current = null;
+    }
+
+    // Jika antrian sudah kosong, kembali ke layar standby (idle)
+    if (clientQueueRef.current.length === 0) {
+      isDisplayingGreetingRef.current = false;
+      currentGuestRef.current = null;
+      setIsGreeting(false);
+      setCurrentGuest(null);
+      setQueueCount(0);
+      return;
+    }
+
+    // Ambil tamu berikutnya dari antrian (FIFO)
+    const nextGuest = clientQueueRef.current.shift()!;
     isDisplayingGreetingRef.current = true;
-    setCurrentGuest(guest);
+    currentGuestRef.current = nextGuest;
+    setQueueCount(clientQueueRef.current.length);
+    setCurrentGuest(nextGuest);
     setIsGreeting(true);
     setGreetingKey((prev) => prev + 1);
     setIsCounterBumped(true);
@@ -67,150 +90,90 @@ export default function DisplayPage() {
 
     playWelcomeSound();
 
-    if (greetingTimeoutRef.current) clearTimeout(greetingTimeoutRef.current);
-    if (jedaTimeoutRef.current) clearTimeout(jedaTimeoutRef.current);
-
-    greetingTimeoutRef.current = setTimeout(() => {
-      setIsGreeting(false);
-      setCurrentGuest(null);
-
-      jedaTimeoutRef.current = setTimeout(() => {
-        if (clientQueueRef.current.length > 0) {
-          const nextGuest = clientQueueRef.current.shift()!;
-          setQueueCount(clientQueueRef.current.length);
-          showGuestCard(nextGuest);
-        } else {
-          isDisplayingGreetingRef.current = false;
-          setQueueCount(0);
-        }
-      }, 1000);
-    }, 3000);
+    // Tepat 3 detik per tamu, lalu langsung lompat ke tamu berikutnya tanpa jeda
+    greetingTimerRef.current = setTimeout(() => {
+      processNextInQueue();
+    }, DISPLAY_DURATION_MS);
   }, []);
 
-  // ─── Queue a guest for display (dedup by event ID, not guest ID) ─────────────
-  // We deduplicate by EVENT ID (checkin_events._id or pusher event key),
-  // NOT by guest.id — this allows re-scanning if a guest is re-checked in.
-  const enqueueGuest = useCallback((guest: Guest, eventKey: string) => {
+  // ─── Enqueue guest for display ───────────────────────────────────────────────
+  const enqueueGuest = useCallback((guest: Guest) => {
     if (!guest || !guest.name) return;
 
-    // Deduplicate this specific event from firing twice (e.g. Convex + Pusher)
-    if (seenPusherEventsRef.current.has(eventKey)) return;
-    seenPusherEventsRef.current.add(eventKey);
-    // Auto-clean after 30s
-    setTimeout(() => seenPusherEventsRef.current.delete(eventKey), 30000);
+    const guestKey = getGuestKey(guest);
 
-    // If currently showing a card, queue it
-    if (isDisplayingGreetingRef.current) {
-      clientQueueRef.current.push(guest);
-      setQueueCount(clientQueueRef.current.length);
+    // 1. Jika tamu ini SEDANG TAMPIL di layar saat ini -> lewati
+    if (currentGuestRef.current && getGuestKey(currentGuestRef.current) === guestKey) {
       return;
     }
 
-    showGuestCard(guest);
-  }, [showGuestCard]);
-
-  // ─── ENGINE 1 (PRIMARY): Convex reactive subscription ───────────────────────
-  // Watches `getLatestCheckinForDisplay` — fires whenever ANY device checks in a guest.
-  // The key insight: we track the last shown event by its _id (permanent record).
-  useEffect(() => {
-    if (!liveDisplay?.latestEvent) return;
-
-    const ev = liveDisplay.latestEvent;
-    const eventId = ev._id as string;
-
-    // Skip if we already showed this event
-    if (lastShownEventIdRef.current === eventId) return;
-
-    // Only show events that happened in the last 60 seconds
-    // (60s window handles slow Convex WS handshake on cold connect)
-    const age = Date.now() - ev.timestamp;
-    if (age > 60000) {
-      // This is an old event from a previous session — just bookmark it, don't show
-      lastShownEventIdRef.current = eventId;
+    // 2. Jika tamu ini SUDAH ADA di dalam antrian menunggu giliran -> lewati
+    const alreadyInQueue = clientQueueRef.current.some(
+      (item) => getGuestKey(item) === guestKey
+    );
+    if (alreadyInQueue) {
       return;
     }
 
-    // Mark as shown
-    lastShownEventIdRef.current = eventId;
+    // Masukkan ke antrian FIFO
+    clientQueueRef.current.push(guest);
+    setQueueCount(clientQueueRef.current.length);
 
-    const guest: Guest = {
-      id: ev.guest_id,
-      no: 0,
-      name: ev.name,
-      category: ev.category,
-      qr_payload: ev.guest_id,
-      is_present: true,
-      checked_in_at: ev.checked_in_at,
-      checkin_method: ev.method,
-      is_walkin: ev.guest_id.startsWith('WALK'),
-      pax: ev.pax,
-    };
-
-    enqueueGuest(guest, `convex_${eventId}`);
-  }, [liveDisplay, enqueueGuest]);
-
-  // ─── ENGINE 2 (FALLBACK): Pusher Cloud WebSocket ─────────────────────────────
-  // Backup channel — fires if Convex WS is slow. Uses same enqueueGuest + dedup.
-  useEffect(() => {
-    const key = process.env.NEXT_PUBLIC_PUSHER_KEY || '2d0c35da6d6434f594d5';
-    const cluster = process.env.NEXT_PUBLIC_PUSHER_CLUSTER || 'ap1';
-    if (!key) return;
-
-    let pusher: any = null;
-    try {
-      pusher = new Pusher(key, { cluster });
-
-      pusher.connection.bind('state_change', (states: { current: string }) => {
-        setIsPusherConnected(states.current === 'connected');
-      });
-
-      const channel = pusher.subscribe('wedding-checkin');
-
-      channel.bind('guest:checkin', (data: { guest: Guest; timestamp?: string }) => {
-        if (data?.guest) {
-          const eventKey = `pusher_${data.guest.id}_${data.guest.checked_in_at || Date.now()}`;
-          enqueueGuest(data.guest, eventKey);
-        }
-      });
-
-      return () => {
-        channel.unbind_all();
-        channel.unsubscribe();
-        pusher.disconnect();
-      };
-    } catch (err) {
-      console.warn('[Display Pusher] Init error:', err);
+    // Jika sedang standby (tidak ada tamu yang tampil), langsung mulai antrian
+    if (!isDisplayingGreetingRef.current) {
+      processNextInQueue();
     }
-  }, [enqueueGuest]);
+  }, [getGuestKey, processNextInQueue]);
 
-  // ─── ENGINE 3 (LAN ONLY): Local SSE stream ───────────────────────────────────
-  // Only works when scanner and display are on the same server (same-origin, local network).
-  // Gracefully degrades — no error shown if it fails.
+  // ─── Cleanup timer on unmount ────────────────────────────────────────────────
   useEffect(() => {
-    let es: EventSource | null = null;
-    let isMounted = true;
-
-    try {
-      es = new EventSource('/api/display/stream');
-
-      es.addEventListener('checkin', (e: MessageEvent) => {
-        if (!isMounted) return;
-        try {
-          const data = JSON.parse(e.data);
-          if (data.guest) {
-            enqueueGuest(data.guest, data.id || `sse_${data.guest.id}_${Date.now()}`);
-          }
-        } catch { /* Ignore parse errors */ }
-      });
-
-      es.onerror = () => { /* Silently degrade — Convex is primary */ };
-    } catch { /* Ignore */ }
-
     return () => {
-      isMounted = false;
-      if (es) es.close();
+      if (greetingTimerRef.current) clearTimeout(greetingTimerRef.current);
     };
-  }, [enqueueGuest]);
+  }, []);
+
+  // ─── CONVEX REALTIME ENGINE: Listen to Check-Ins from Any Device ─────────────
+  // Langsung reaktif menangkap scan dari tablet, iPad, HP, atau scanner fisik
+  useEffect(() => {
+    const events = (liveDisplay as any)?.recentEvents;
+    if (!events || !Array.isArray(events) || events.length === 0) return;
+
+    // Saat layar display pertama kali dibuka:
+    // Tandai seluruh event lama di database agar tidak memutar ulang masa lalu
+    if (isFirstRunRef.current) {
+      isFirstRunRef.current = false;
+      for (const ev of events) {
+        if (ev._id) {
+          processedEventIdsRef.current.add(ev._id as string);
+        }
+      }
+      return;
+    }
+
+    // Tangkap setiap scan baru yang belum pernah diproses
+    for (const ev of events) {
+      const eventId = ev._id as string;
+      if (!eventId) continue;
+
+      if (processedEventIdsRef.current.has(eventId)) continue;
+      processedEventIdsRef.current.add(eventId);
+
+      const guest: Guest = {
+        id: ev.guest_id,
+        no: 0,
+        name: ev.name,
+        category: ev.category,
+        qr_payload: ev.guest_id,
+        is_present: true,
+        checked_in_at: ev.checked_in_at,
+        checkin_method: ev.method,
+        is_walkin: ev.guest_id.startsWith('WALK'),
+        pax: ev.pax,
+      };
+
+      enqueueGuest(guest);
+    }
+  }, [liveDisplay, enqueueGuest]);
 
   // ─── ENGINE 4 (DISPLAY DEVICE): Hardware QR Scanner on THIS screen ──────────
   // If a barcode scanner (BT/Dongle/USB) is connected directly to the display device,
@@ -244,7 +207,7 @@ export default function DisplayPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ guest: res.guest }),
-              }).catch(() => {});
+              }).catch(() => { });
             }
           } catch (err) {
             console.error('[Display Hardware QR Scan Error]:', err);
@@ -388,10 +351,10 @@ export default function DisplayPage() {
         {/* Real-time Connection Status */}
         <div
           className="connection-status"
-          title={`Status Sinkronisasi:\n• Convex Cloud: ${isConvexConnected ? 'Terhubung ✓' : 'Menghubungkan...'}\n• Pusher Cloud: ${isPusherConnected ? 'Terhubung ✓' : 'Standby'}`}
+          title={`Status Sinkronisasi:\n• Convex Cloud: ${isOnline ? 'Terhubung ✓ (Real-time)' : 'Menghubungkan...'}`}
         >
           <div className={`status-dot ${isOnline ? 'connected' : 'disconnected'}`} />
-          <span>{isOnline ? 'Online (Real-time)' : 'Menghubungkan...'}</span>
+          <span>{isOnline ? 'Convex: Terhubung' : 'Menghubungkan...'}</span>
         </div>
       </div>
 
@@ -407,10 +370,6 @@ export default function DisplayPage() {
           </div>
           <div className="idle-divider" />
           <div className="idle-subtitle" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
-            <span className="material-symbols-outlined" style={{ fontSize: '1.4rem', color: 'var(--gold-primary)' }}>
-              qr_code_scanner
-            </span>
-            <span>Scanner QR Terhubung (Dongle/BT/USB) • Scan Undangan Langsung Kapan Saja</span>
           </div>
 
           {/* Live Scanner Counting — from Convex */}

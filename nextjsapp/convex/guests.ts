@@ -60,29 +60,35 @@ export const getLatestEvent = query({
 export const getLatestCheckinForDisplay = query({
   args: {},
   handler: async (ctx) => {
-    // Most recent checkin event
-    const latestEvent = await ctx.db
+    // Take 25 recent checkin events so multiple rapid scans are never dropped
+    const recentDesc = await ctx.db
       .query("checkin_events")
       .withIndex("by_timestamp")
       .order("desc")
-      .take(1);
+      .take(25);
 
-    // Stats: use indexed queries for efficiency
+    // Chronological order (oldest first) so queue plays in order of scan
+    const recentEvents = [...recentDesc].reverse().map((ev) => ({
+      _id: ev._id,
+      guest_id: ev.guest_id,
+      name: ev.name,
+      category: ev.category,
+      pax: ev.pax,
+      checked_in_at: ev.checked_in_at,
+      method: ev.method,
+      timestamp: ev.timestamp,
+    }));
+
+    const latestEvent = recentEvents.length > 0 ? recentEvents[recentEvents.length - 1] : null;
+
+    // Stats
     const allGuests = await ctx.db.query("guests").collect();
     const total = allGuests.length;
     const present = allGuests.filter((g) => g.is_present).length;
 
     return {
-      latestEvent: latestEvent.length > 0 ? {
-        _id: latestEvent[0]._id,
-        guest_id: latestEvent[0].guest_id,
-        name: latestEvent[0].name,
-        category: latestEvent[0].category,
-        pax: latestEvent[0].pax,
-        checked_in_at: latestEvent[0].checked_in_at,
-        method: latestEvent[0].method,
-        timestamp: latestEvent[0].timestamp,
-      } : null,
+      latestEvent,
+      recentEvents,
       stats: {
         total,
         present,
