@@ -309,15 +309,26 @@ export const undoCheckin = mutation({
       checkin_method: undefined,
     });
 
-    // Remove from display queue if still waiting
-    const queuedDisplay = await ctx.db
+    // Remove from display queue if still waiting or mark done if displaying
+    const activeOrQueuedDisplay = await ctx.db
       .query("display_queue")
-      .withIndex("by_status", (q) => q.eq("status", "queued"))
-      .filter((q) => q.eq(q.field("guest_id"), args.id))
-      .first();
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("guest_id"), args.id),
+          q.or(
+            q.eq(q.field("status"), "queued"),
+            q.eq(q.field("status"), "displaying")
+          )
+        )
+      )
+      .collect();
 
-    if (queuedDisplay) {
-      await ctx.db.delete(queuedDisplay._id);
+    for (const item of activeOrQueuedDisplay) {
+      if (item.status === "queued") {
+        await ctx.db.delete(item._id);
+      } else {
+        await ctx.db.patch(item._id, { status: "done" });
+      }
     }
 
     // Sync undo directly to Google Spreadsheet from Convex Cloud!
@@ -468,3 +479,45 @@ export const seedGuestsBatch = mutation({
     return { inserted };
   },
 });
+
+/**
+ * Mutation untuk mereset seluruh status kehadiran tamu kembali ke belum hadir (is_present: false)
+ * dan membersihkan tabel queue serta events (Sangat berguna untuk pengujian/simulasi)
+ */
+export const resetAllAttendance = mutation({
+  args: {},
+  handler: async (ctx) => {
+    // 1. Reset seluruh tamu yang sedang is_present: true
+    const presentGuests = await ctx.db
+      .query("guests")
+      .withIndex("by_is_present", (q) => q.eq("is_present", true))
+      .collect();
+
+    for (const g of presentGuests) {
+      await ctx.db.patch(g._id, {
+        is_present: false,
+        checked_in_at: undefined,
+        checkin_method: undefined,
+      });
+    }
+
+    // 2. Bersihkan seluruh antrian display_queue
+    const allQueues = await ctx.db.query("display_queue").collect();
+    for (const q of allQueues) {
+      await ctx.db.delete(q._id);
+    }
+
+    // 3. Bersihkan seluruh checkin_events
+    const allEvents = await ctx.db.query("checkin_events").collect();
+    for (const e of allEvents) {
+      await ctx.db.delete(e._id);
+    }
+
+    return {
+      status: "success",
+      message: `Berhasil mereset ${presentGuests.length} data kehadiran tamu dan membersihkan antrian display.`,
+      resetCount: presentGuests.length,
+    };
+  },
+});
+

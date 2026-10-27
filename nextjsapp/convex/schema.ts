@@ -45,6 +45,7 @@ export default defineSchema({
     status: v.union(
       v.literal("queued"),
       v.literal("displaying"),
+      v.literal("done"),
       v.literal("completed")
     ),
     createdAt: v.number(),

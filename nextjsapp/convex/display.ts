@@ -1,12 +1,16 @@
 import { mutation, query, internalMutation, MutationCtx } from "./_generated/server";
-import { v } from "convex/values";
 import { internal } from "./_generated/api";
+
+// Exact display duration: 5 seconds per guest
+export const DISPLAY_DURATION_MS = 5000;
+// Grace period before an active display item is considered stale (5s + 2s grace)
+export const STALE_THRESHOLD_MS = 7000;
 
 /**
  * Enqueue a guest for TV display.
- * If no guest is currently displaying, starts displaying immediately
- * and schedules advanceQueue after 5000ms using Convex scheduler.
- * If a guest is already displaying, queues the new guest to be shown in order.
+ * - If no guest is currently displaying, starts displaying immediately
+ *   and schedules advanceQueue after 5000ms using Convex scheduler.
+ * - If a guest is already displaying, queues the new guest to be shown in order (FIFO).
  */
 export async function enqueueGuestForDisplay(
   ctx: MutationCtx,
@@ -29,12 +33,11 @@ export async function enqueueGuestForDisplay(
 
   let hasActive = false;
   for (const item of activeItems) {
-    // If the active item started within the last 4 seconds (3s display + 1s grace), it's still actively showing
-    if (now - (item.displayStartedAt ?? 0) < 4000) {
+    if (now - (item.displayStartedAt ?? 0) < STALE_THRESHOLD_MS) {
       hasActive = true;
     } else {
-      // Expired/stale active item, mark completed
-      await ctx.db.patch(item._id, { status: "completed" });
+      // Expired/stale active item, mark done
+      await ctx.db.patch(item._id, { status: "done" });
     }
   }
 
@@ -47,8 +50,8 @@ export async function enqueueGuestForDisplay(
       displayStartedAt: now,
     });
 
-    // Schedule advancing the queue in exactly 3000ms via Convex Scheduler!
-    await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
+    // Schedule advancing the queue in exactly 5000ms via Convex Scheduler
+    await ctx.scheduler.runAfter(DISPLAY_DURATION_MS, internal.display.advanceQueue, {});
   } else {
     // Active display is already running! Place this guest into the waiting queue.
     await ctx.db.insert("display_queue", {
@@ -61,21 +64,24 @@ export async function enqueueGuestForDisplay(
 
 /**
  * Advances the display queue:
- * Marks currently displaying item as completed,
- * provides a 2-second transition jeda on idle screen,
- * then picks the next queued guest (FIFO) to display for 5000ms.
+ * 1. Sweeper: Marks currently displaying item(s) as "done".
+ * 2. Fetches the oldest queued guest (FIFO order).
+ * 3. Immediately transitions the next guest to "displaying" for 5000ms.
+ * 4. Schedules the next advanceQueue in 5000ms.
  */
 export const advanceQueue = internalMutation({
   args: {},
   handler: async (ctx) => {
-    // 1. Mark any displaying items as completed
+    const now = Date.now();
+
+    // 1. Mark any displaying items as "done" (sweeper)
     const activeItems = await ctx.db
       .query("display_queue")
       .withIndex("by_status", (q) => q.eq("status", "displaying"))
       .collect();
 
     for (const item of activeItems) {
-      await ctx.db.patch(item._id, { status: "completed" });
+      await ctx.db.patch(item._id, { status: "done" });
     }
 
     // 2. Fetch the oldest queued guest (FIFO order)
@@ -86,76 +92,73 @@ export const advanceQueue = internalMutation({
       .first();
 
     if (nextItem) {
-      // Provide a 1000ms jeda (idle screen) before showing the next queued guest
-      await ctx.scheduler.runAfter(1000, internal.display.displayNextQueuedItem, {});
-    }
-  },
-});
-
-export const displayNextQueuedItem = internalMutation({
-  args: {},
-  handler: async (ctx) => {
-    const now = Date.now();
-    const nextItem = await ctx.db
-      .query("display_queue")
-      .withIndex("by_status_createdAt", (q) => q.eq("status", "queued"))
-      .order("asc")
-      .first();
-
-    if (nextItem) {
-      // Mark as displaying
+      // 3. Mark next item as displaying immediately (eliminates race condition window)
       await ctx.db.patch(nextItem._id, {
         status: "displaying",
         displayStartedAt: now,
       });
 
-      // Display this guest for 3000ms, then advance queue
-      await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
+      // 4. Schedule next advance in exactly 5000ms
+      await ctx.scheduler.runAfter(DISPLAY_DURATION_MS, internal.display.advanceQueue, {});
     }
   },
 });
 
 /**
- * Watchdog cron job running periodically (every 1 minute)
- * to recover any stalled queue and clean up old completed entries (> 24 hours).
+ * Watchdog & Sweeper cron job running periodically (every 1 minute)
+ * to recover any stalled queue and clean up old done/completed entries (> 24 hours).
  */
 export const watchdogQueue = internalMutation({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
 
-    // Check if there are queued guests waiting
-    const queuedFirst = await ctx.db
+    // 1. Sweeper: check if any displaying item is stale (> 7000ms)
+    const activeItems = await ctx.db
       .query("display_queue")
-      .withIndex("by_status_createdAt", (q) => q.eq("status", "queued"))
-      .order("asc")
-      .first();
+      .withIndex("by_status", (q) => q.eq("status", "displaying"))
+      .collect();
 
-    if (queuedFirst) {
-      // Check if displaying item is absent or stale (> 4000ms: 3s display + 1s grace)
-      const displaying = await ctx.db
+    let hasValidActive = false;
+    for (const item of activeItems) {
+      if (now - (item.displayStartedAt ?? 0) >= STALE_THRESHOLD_MS) {
+        await ctx.db.patch(item._id, { status: "done" });
+      } else {
+        hasValidActive = true;
+      }
+    }
+
+    // 2. Check if there are queued guests waiting while nothing is displaying
+    if (!hasValidActive) {
+      const queuedFirst = await ctx.db
         .query("display_queue")
-        .withIndex("by_status", (q) => q.eq("status", "displaying"))
+        .withIndex("by_status_createdAt", (q) => q.eq("status", "queued"))
+        .order("asc")
         .first();
 
-      const isStale = displaying && (now - (displaying.displayStartedAt ?? 0) > 4000);
-
-      if (!displaying || isStale) {
-        if (displaying) {
-          await ctx.db.patch(displaying._id, { status: "completed" });
-        }
-
+      if (queuedFirst) {
         await ctx.db.patch(queuedFirst._id, {
           status: "displaying",
           displayStartedAt: now,
         });
 
-        await ctx.scheduler.runAfter(3000, internal.display.advanceQueue, {});
+        await ctx.scheduler.runAfter(DISPLAY_DURATION_MS, internal.display.advanceQueue, {});
       }
     }
 
-    // Cleanup old completed records older than 24 hours
+    // 3. Cleanup old done / completed records older than 24 hours
     const oneDayAgo = now - 24 * 60 * 60 * 1000;
+    const oldDone = await ctx.db
+      .query("display_queue")
+      .withIndex("by_status_createdAt", (q) =>
+        q.eq("status", "done").lt("createdAt", oneDayAgo)
+      )
+      .take(50);
+
+    for (const item of oldDone) {
+      await ctx.db.delete(item._id);
+    }
+
     const oldCompleted = await ctx.db
       .query("display_queue")
       .withIndex("by_status_createdAt", (q) =>
@@ -171,15 +174,20 @@ export const watchdogQueue = internalMutation({
 
 /**
  * Reactive query for Display TV:
- * Returns the currently active guest and the queue length.
+ * Returns the currently active guest (valid for 5s), queue count, and live stats.
  */
 export const getCurrentDisplay = query({
   args: {},
   handler: async (ctx) => {
+    const now = Date.now();
+
     const active = await ctx.db
       .query("display_queue")
       .withIndex("by_status", (q) => q.eq("status", "displaying"))
       .first();
+
+    const isStale = active && active.displayStartedAt && (now - active.displayStartedAt > STALE_THRESHOLD_MS);
+    const validActive = active && !isStale ? active : null;
 
     const queuedItems = await ctx.db
       .query("display_queue")
@@ -187,22 +195,33 @@ export const getCurrentDisplay = query({
       .order("asc")
       .collect();
 
+    // Real-time guest attendance statistics
+    const allGuests = await ctx.db.query("guests").collect();
+    const total = allGuests.length;
+    const present = allGuests.filter((g) => g.is_present).length;
+
     return {
-      active: active
+      active: validActive
         ? {
-            _id: active._id,
-            guest_id: active.guest_id,
-            name: active.name,
-            category: active.category,
-            pax: active.pax,
-            checked_in_at: active.checked_in_at,
-            method: active.method,
-            displayStartedAt: active.displayStartedAt || active.createdAt,
+            _id: validActive._id,
+            guest_id: validActive.guest_id,
+            name: validActive.name,
+            category: validActive.category,
+            pax: validActive.pax,
+            checked_in_at: validActive.checked_in_at,
+            method: validActive.method,
+            displayStartedAt: validActive.displayStartedAt || validActive.createdAt,
           }
         : null,
       queueCount: queuedItems.length,
       nextGuest: queuedItems.length > 0 ? queuedItems[0].name : null,
       queueList: queuedItems.slice(0, 5).map((q) => ({ id: q.guest_id, name: q.name })),
+      stats: {
+        total,
+        present,
+        absent: total - present,
+        percentage: total > 0 ? Math.round((present / total) * 100) : 0,
+      },
     };
   },
 });
@@ -224,7 +243,7 @@ export const resetDisplayQueue = mutation({
       .collect();
 
     for (const item of activeOrQueued) {
-      await ctx.db.patch(item._id, { status: "completed" });
+      await ctx.db.patch(item._id, { status: "done" });
     }
     return { cleared: activeOrQueued.length };
   },

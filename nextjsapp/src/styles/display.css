@@ -547,7 +547,7 @@ body {
 .greeting-progress-bar {
   height: 100%;
   background: linear-gradient(90deg, var(--gold-primary), var(--gold-shimmer));
-  animation: progressShrink 3s linear forwards;
+  animation: progressShrink 5s linear forwards;
 }
 
 @keyframes progressShrink {
@@ -750,7 +750,7 @@ body {
   height: 100%;
   width: 100%;
   background: linear-gradient(90deg, var(--gold-light), var(--gold-primary), var(--gold-dark));
-  animation: progressDrain 3s linear forwards;
+  animation: progressDrain 5s linear forwards;
   transform-origin: left;
 }
 
