@@ -444,6 +444,11 @@ body {
   box-sizing: border-box !important;
 }
 
+/* Suppress any default html5-qrcode paused overlay */
+.camera-section #qr-reader div[style*="rgba(9, 9, 9"] {
+  display: none !important;
+}
+
 /* ============================================================
    Scan Result Banner (Alert)
    ============================================================ */
