@@ -21,6 +21,10 @@
   --text-dark: #2C2417;
   --text-body: #4A3F32;
   --text-muted: #7A6F5F;
+
+  /* Accent / Blue */
+  --blue-primary: #3D668A;
+  --slate-blue: #3D668A;
 }
 
 .display-container,
@@ -320,8 +324,9 @@ body {
 
 .idle-counter-icon {
   font-size: 5rem;
+  font-weight: 500;
   line-height: 1;
-  color: var(--gold-primary);
+  color: var(--blue-primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -331,8 +336,8 @@ body {
 .idle-counter-value {
   font-family: 'Inter', sans-serif;
   font-size: 5rem;
-  color: var(--gold-primary);
-  font-weight: 300;
+  color: var(--blue-primary);
+  font-weight: 500;
   letter-spacing: 4px;
   line-height: 1;
   display: inline-flex;
