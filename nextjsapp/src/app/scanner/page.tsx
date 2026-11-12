@@ -119,6 +119,13 @@ export default function ScannerPage() {
     lastScannedPayloadRef.current = { text: trimmed, time: now };
     setIsProcessing(true);
 
+    // 3. Immediately pause camera decoding to stop subsequent video frames from scanning
+    try {
+      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+        html5QrCodeRef.current.pause(true);
+      }
+    } catch {}
+
     try {
       const res = await checkinMutation({ query: trimmed, method: 'QR Scan' });
 
@@ -179,10 +186,15 @@ export default function ScannerPage() {
       resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     } finally {
       setIsProcessing(false);
-      // Software-level cooldown before processing the next scan (1.2s)
+      // Unlock camera decoding after 2.5s cooldown
       setTimeout(() => {
         isProcessingScanRef.current = false;
-      }, 1200);
+        try {
+          if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
+            html5QrCodeRef.current.resume();
+          }
+        } catch {}
+      }, 2500);
     }
   }, [checkinMutation]);
 

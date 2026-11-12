@@ -319,7 +319,7 @@ body {
 }
 
 .idle-counter-icon {
-  font-size: 1.7rem;
+  font-size: 2.4rem;
   line-height: 1;
   color: var(--gold-primary);
   display: inline-flex;
@@ -330,7 +330,7 @@ body {
 
 .idle-counter-value {
   font-family: 'Inter', sans-serif;
-  font-size: 1.8rem;
+  font-size: 2.5rem;
   font-weight: 300;
   color: var(--text-muted);
   letter-spacing: 4px;
@@ -627,8 +627,17 @@ body {
 }
 
 @keyframes pulseDot {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
 }
 
 @keyframes pulseAudio {
@@ -723,9 +732,12 @@ body {
 }
 
 @keyframes queuePulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgba(197, 165, 90, 0.15);
   }
+
   50% {
     box-shadow: 0 0 10px 2px rgba(197, 165, 90, 0.3);
   }
@@ -758,8 +770,307 @@ body {
   from {
     transform: scaleX(1);
   }
+
   to {
     transform: scaleX(0);
   }
 }
 
+/* ============================================================
+   Responsive Media Queries for Mobile & Tablet Views
+   ============================================================ */
+
+/* Tablet & Smaller Laptops (<= 1024px) */
+@media (max-width: 1024px) {
+  .top-indicators {
+    top: 18px;
+    right: 24px;
+    gap: 10px;
+  }
+
+  .idle-title {
+    font-size: 4rem;
+  }
+
+  .idle-names {
+    font-size: 3.5rem;
+    letter-spacing: 4px;
+  }
+
+  .idle-ampersand {
+    font-size: 2.8rem;
+    margin: 0 14px;
+  }
+
+  .greeting-card {
+    padding: 40px 50px;
+    max-width: 90%;
+  }
+
+  .greeting-name {
+    font-size: 4rem;
+  }
+}
+
+/* Tablet Portrait & Large Smartphones (<= 768px) */
+@media (max-width: 768px) {
+  .display-container {
+    cursor: default;
+  }
+
+  /* Top indicators: center aligned and wrapped nicely */
+  .top-indicators {
+    position: absolute;
+    top: 14px;
+    left: 12px;
+    right: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .scanner-status-indicator,
+  .audio-indicator,
+  .display-queue-badge {
+    padding: 4px 10px;
+    font-size: 0.68rem;
+  }
+
+  .connection-status {
+    font-size: 0.68rem;
+  }
+
+  /* Adjust corner ornaments */
+  .corner-ornament {
+    width: 36px;
+    height: 36px;
+  }
+
+  .corner-tl {
+    top: 12px;
+    left: 12px;
+  }
+
+  .corner-tr {
+    top: 12px;
+    right: 12px;
+  }
+
+  .corner-bl {
+    bottom: 12px;
+    left: 12px;
+  }
+
+  .corner-br {
+    bottom: 12px;
+    right: 12px;
+  }
+
+  .ornament-side-left,
+  .ornament-side-right {
+    display: none;
+  }
+
+  /* Idle Screen Elements */
+  .idle-screen {
+    padding: 60px 16px 80px;
+  }
+
+  .idle-pretext {
+    font-size: 1.15rem;
+    letter-spacing: 2px;
+    margin-bottom: 6px;
+  }
+
+  .idle-title {
+    font-size: 3rem;
+    margin-bottom: 4px;
+  }
+
+  .idle-names {
+    font-size: 2.4rem;
+    letter-spacing: 3px;
+    margin-bottom: 14px;
+    line-height: 1.2;
+  }
+
+  .idle-ampersand {
+    font-size: 2.2rem;
+    margin: 0 10px;
+  }
+
+  .idle-divider {
+    width: 140px;
+    margin-bottom: 16px;
+  }
+
+  .idle-counter-simple {
+    margin-top: 16px;
+    gap: 8px;
+  }
+
+  .idle-counter-icon {
+    font-size: 1.4rem;
+  }
+
+  .idle-counter-value {
+    font-size: 1.5rem;
+    letter-spacing: 2px;
+  }
+
+  .idle-clock {
+    bottom: 24px;
+    font-size: 1.3rem;
+    letter-spacing: 2px;
+  }
+
+  /* Greeting Card Elements */
+  .greeting-card {
+    padding: 30px 20px;
+    width: 92%;
+    max-width: 500px;
+  }
+
+  .greeting-welcome {
+    font-size: 2.4rem;
+    margin-bottom: 6px;
+  }
+
+  .greeting-divider {
+    width: 90px;
+    margin: 0 auto 20px;
+  }
+
+  .greeting-name {
+    font-size: 2.8rem;
+    line-height: 1.2;
+    margin-bottom: 12px;
+    word-break: break-word;
+  }
+
+  .greeting-id {
+    font-size: 1rem;
+    padding: 4px 16px;
+  }
+
+  .greeting-queue-pill {
+    margin-top: 14px;
+    padding: 6px 14px;
+    font-size: 0.8rem;
+  }
+}
+
+/* Small Smartphone Screens (<= 480px) */
+@media (max-width: 480px) {
+  .top-indicators {
+    top: 10px;
+    left: 8px;
+    right: 8px;
+    gap: 6px;
+  }
+
+  .scanner-status-indicator,
+  .audio-indicator,
+  .display-queue-badge {
+    padding: 3px 8px;
+    font-size: 0.64rem;
+    gap: 4px;
+  }
+
+  .scanner-status-indicator span.material-symbols-outlined,
+  .audio-indicator span.material-symbols-outlined,
+  .display-queue-badge span.material-symbols-outlined {
+    font-size: 0.85rem !important;
+  }
+
+  .connection-status {
+    font-size: 0.62rem;
+  }
+
+  .corner-ornament {
+    width: 24px;
+    height: 24px;
+  }
+
+  .corner-tl {
+    top: 8px;
+    left: 8px;
+  }
+
+  .corner-tr {
+    top: 8px;
+    right: 8px;
+  }
+
+  .corner-bl {
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .corner-br {
+    bottom: 8px;
+    right: 8px;
+  }
+
+  .idle-pretext {
+    font-size: 0.95rem;
+    letter-spacing: 1.5px;
+  }
+
+  .idle-title {
+    font-size: 2.4rem;
+  }
+
+  .idle-names {
+    font-size: 1.85rem;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .idle-ampersand {
+    font-size: 1.7rem;
+    margin: 0;
+    line-height: 1;
+  }
+
+  .idle-divider {
+    width: 100px;
+    margin-bottom: 12px;
+  }
+
+  .idle-counter-icon {
+    font-size: 1.25rem;
+  }
+
+  .idle-counter-value {
+    font-size: 1.35rem;
+  }
+
+  .idle-clock {
+    bottom: 16px;
+    font-size: 1.15rem;
+  }
+
+  .greeting-welcome {
+    font-size: 2rem;
+  }
+
+  .greeting-name {
+    font-size: 2.1rem;
+    letter-spacing: 1px;
+  }
+
+  .greeting-id {
+    font-size: 0.88rem;
+    padding: 3px 12px;
+  }
+
+  .greeting-queue-pill {
+    font-size: 0.74rem;
+    padding: 5px 12px;
+  }
+}
