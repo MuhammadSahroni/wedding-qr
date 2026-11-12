@@ -319,7 +319,7 @@ body {
 }
 
 .idle-counter-icon {
-  font-size: 2.4rem;
+  font-size: 5rem;
   line-height: 1;
   color: var(--gold-primary);
   display: inline-flex;
@@ -330,9 +330,9 @@ body {
 
 .idle-counter-value {
   font-family: 'Inter', sans-serif;
-  font-size: 2.5rem;
+  font-size: 5rem;
+  color: var(--gold-primary);
   font-weight: 300;
-  color: var(--text-muted);
   letter-spacing: 4px;
   line-height: 1;
   display: inline-flex;
@@ -910,11 +910,11 @@ body {
   }
 
   .idle-counter-icon {
-    font-size: 1.4rem;
+    font-size: 5rem;
   }
 
   .idle-counter-value {
-    font-size: 1.5rem;
+    font-size: 5rem;
     letter-spacing: 2px;
   }
 
@@ -1043,11 +1043,11 @@ body {
   }
 
   .idle-counter-icon {
-    font-size: 1.25rem;
+    font-size: 3rem;
   }
 
   .idle-counter-value {
-    font-size: 1.35rem;
+    font-size: 3rem;
   }
 
   .idle-clock {
