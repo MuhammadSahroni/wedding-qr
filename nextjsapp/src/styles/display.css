@@ -439,7 +439,30 @@ body {
   border-radius: 30px;
   border: 1px solid rgba(197, 165, 90, 0.2);
   letter-spacing: 2px;
+  margin-bottom: 12px;
+}
+
+.greeting-registered-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 1.55rem;
+  font-weight: 700;
+  color: #1B4D3E;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-top: 8px;
   margin-bottom: 14px;
+}
+
+.greeting-registered-status .registered-icon {
+  font-size: 1.5rem;
+  font-weight: 900;
+  color: #1B4D3E;
+  display: inline-flex;
+  align-items: center;
 }
 
 .greeting-category {
@@ -958,6 +981,16 @@ body {
     padding: 4px 16px;
   }
 
+  .greeting-registered-status {
+    font-size: 1.15rem;
+    gap: 6px;
+    margin-bottom: 12px;
+  }
+
+  .greeting-registered-status .registered-icon {
+    font-size: 1.3rem;
+  }
+
   .greeting-queue-pill {
     margin-top: 14px;
     padding: 6px 14px;
@@ -1072,6 +1105,16 @@ body {
   .greeting-id {
     font-size: 0.88rem;
     padding: 3px 12px;
+  }
+
+  .greeting-registered-status {
+    font-size: 0.95rem;
+    gap: 5px;
+    margin-bottom: 10px;
+  }
+
+  .greeting-registered-status .registered-icon {
+    font-size: 1.1rem;
   }
 
   .greeting-queue-pill {

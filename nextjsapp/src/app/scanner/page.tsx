@@ -75,6 +75,18 @@ export default function ScannerPage() {
   // Synchronous lock and payload deduplicator to ensure strictly 1 request per QR scan
   const isProcessingScanRef = useRef(false);
   const lastScannedPayloadRef = useRef<{ text: string; time: number }>({ text: '', time: 0 });
+  const successModalGuestRef = useRef<Guest | null>(null);
+
+  const openSuccessModal = useCallback((guest: Guest) => {
+    successModalGuestRef.current = guest;
+    setSuccessModalGuest(guest);
+  }, []);
+
+  const closeSuccessModal = useCallback(() => {
+    successModalGuestRef.current = null;
+    setSuccessModalGuest(null);
+    isProcessingScanRef.current = false;
+  }, []);
 
   // Clock
   useEffect(() => {
@@ -103,13 +115,13 @@ export default function ScannerPage() {
     const trimmed = rawText.trim();
     const now = Date.now();
 
-    // 1. Synchronous lock: Prevent duplicate in-flight requests
-    if (isProcessingScanRef.current) return;
+    // 1. Synchronous lock: Prevent duplicate in-flight requests or scanning while modal is active
+    if (isProcessingScanRef.current || successModalGuestRef.current) return;
 
-    // 2. Synchronous deduplication: Block identical QR within 4.5 seconds
+    // 2. Synchronous deduplication: Block identical QR within 3 seconds
     if (
       lastScannedPayloadRef.current.text === trimmed &&
-      now - lastScannedPayloadRef.current.time < 4500
+      now - lastScannedPayloadRef.current.time < 3000
     ) {
       return;
     }
@@ -119,12 +131,7 @@ export default function ScannerPage() {
     lastScannedPayloadRef.current = { text: trimmed, time: now };
     setIsProcessing(true);
 
-    // 3. Immediately pause camera decoding to stop subsequent video frames from scanning
-    try {
-      if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-        html5QrCodeRef.current.pause(true);
-      }
-    } catch {}
+    // Video stream kamera tetap berjalan mulus 100% tanpa di-pause (pause(true) dihilangkan)
 
     try {
       const res = await checkinMutation({ query: trimmed, method: 'QR Scan' });
@@ -132,7 +139,7 @@ export default function ScannerPage() {
       if (res.status === 'success') {
         playSuccess();
         const guestData = res.guest as Guest;
-        setSuccessModalGuest(guestData);
+        openSuccessModal(guestData);
         setScanResult({
           type: 'success',
           guest: guestData,
@@ -154,7 +161,7 @@ export default function ScannerPage() {
         }).catch(() => {});
       } else if (res.status === 'duplicate') {
         playDuplicate();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'duplicate',
           guest: (res.guest as Guest) || null,
@@ -163,7 +170,7 @@ export default function ScannerPage() {
         if (res.guest) setLastGuest(res.guest as Guest);
       } else {
         playError();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'error',
           guest: null,
@@ -176,7 +183,7 @@ export default function ScannerPage() {
     } catch (e) {
       console.error('Scan processing error:', e);
       playError();
-      setSuccessModalGuest(null);
+      closeSuccessModal();
       setScanResult({
         type: 'error',
         guest: null,
@@ -186,17 +193,15 @@ export default function ScannerPage() {
       resultTimeoutRef.current = setTimeout(() => setScanResult(null), 5000);
     } finally {
       setIsProcessing(false);
-      // Unlock camera decoding after 2.5s cooldown
+      // Jika modal tidak terbuka (error/duplikat), lepas lock setelah 1.5 detik.
+      // Jika modal terbuka, lock akan otomatis dilepas saat tombol Tutup diklik (0 ms).
       setTimeout(() => {
-        isProcessingScanRef.current = false;
-        try {
-          if (html5QrCodeRef.current && html5QrCodeRef.current.isScanning) {
-            html5QrCodeRef.current.resume();
-          }
-        } catch {}
-      }, 2500);
+        if (!successModalGuestRef.current) {
+          isProcessingScanRef.current = false;
+        }
+      }, 1500);
     }
-  }, [checkinMutation]);
+  }, [checkinMutation, openSuccessModal, closeSuccessModal]);
 
   // Process Hardware Scanner QR scan result (Dongle, Bluetooth, USB) - Strictly 1 request
   const processHardwareScan = useCallback(async (rawText: string) => {
@@ -204,13 +209,13 @@ export default function ScannerPage() {
     const trimmed = rawText.trim();
     const now = Date.now();
 
-    // 1. Synchronous lock: Prevent duplicate in-flight requests
-    if (isProcessingScanRef.current) return;
+    // 1. Synchronous lock: Prevent duplicate in-flight requests or scanning while modal is active
+    if (isProcessingScanRef.current || successModalGuestRef.current) return;
 
-    // 2. Synchronous deduplication: Block identical QR within 4.5 seconds
+    // 2. Synchronous deduplication: Block identical QR within 3 seconds
     if (
       lastScannedPayloadRef.current.text === trimmed &&
-      now - lastScannedPayloadRef.current.time < 4500
+      now - lastScannedPayloadRef.current.time < 3000
     ) {
       return;
     }
@@ -231,7 +236,7 @@ export default function ScannerPage() {
       if (res.status === 'success') {
         playSuccess();
         const guestData = res.guest as Guest;
-        setSuccessModalGuest(guestData);
+        openSuccessModal(guestData);
         setScanResult({
           type: 'success',
           guest: guestData,
@@ -253,7 +258,7 @@ export default function ScannerPage() {
         }).catch(() => {});
       } else if (res.status === 'duplicate') {
         playDuplicate();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'duplicate',
           guest: (res.guest as Guest) || null,
@@ -262,7 +267,7 @@ export default function ScannerPage() {
         if (res.guest) setLastGuest(res.guest as Guest);
       } else {
         playError();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'error',
           guest: null,
@@ -275,7 +280,7 @@ export default function ScannerPage() {
     } catch (e) {
       console.error('Hardware Scanner processing error:', e);
       playError();
-      setSuccessModalGuest(null);
+      closeSuccessModal();
       setScanResult({
         type: 'error',
         guest: null,
@@ -286,10 +291,12 @@ export default function ScannerPage() {
     } finally {
       setIsProcessing(false);
       setTimeout(() => {
-        isProcessingScanRef.current = false;
-      }, 2000);
+        if (!successModalGuestRef.current) {
+          isProcessingScanRef.current = false;
+        }
+      }, 1500);
     }
-  }, [checkinMutation]);
+  }, [checkinMutation, openSuccessModal, closeSuccessModal]);
 
   // Global Key Listener for Hardware Scanner (USB Cable, 2.4G Dongle & Bluetooth HID)
   useEffect(() => {
@@ -300,6 +307,23 @@ export default function ScannerPage() {
       const isInputOrTextarea = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
       const isSearchInput = target && target.id === 'search-input';
       const isHardwareInput = target && target.id === 'hardware-scanner-input';
+
+      // Close success modal on Escape or manual Enter
+      if (e.key === 'Escape') {
+        if (successModalGuestRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeSuccessModal();
+          return;
+        }
+      }
+
+      if (e.key === 'Enter' && successModalGuestRef.current && hardwareScanBufferRef.current.trim().length < 2) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeSuccessModal();
+        return;
+      }
 
       // Ignore normal inputs other than search & hardware test input (e.g. walkin modal inputs)
       if (isInputOrTextarea && !isSearchInput && !isHardwareInput) {
@@ -348,7 +372,7 @@ export default function ScannerPage() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [hardwareScannerActive, processHardwareScan]);
+  }, [hardwareScannerActive, processHardwareScan, closeSuccessModal]);
 
   // Camera Management
   const startCamera = useCallback(async () => {
@@ -468,7 +492,7 @@ export default function ScannerPage() {
       if (data.status === 'success') {
         playSuccess();
         const guestData = data.guest as Guest;
-        setSuccessModalGuest(guestData);
+        openSuccessModal(guestData);
         setScanResult({
           type: 'success',
           guest: guestData,
@@ -484,7 +508,7 @@ export default function ScannerPage() {
         }).catch((e) => console.error('Sheet checkin sync error:', e));
       } else if (data.status === 'duplicate') {
         playDuplicate();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'duplicate',
           guest: (data.guest as Guest) || null,
@@ -492,7 +516,7 @@ export default function ScannerPage() {
         });
       } else {
         playError();
-        setSuccessModalGuest(null);
+        closeSuccessModal();
         setScanResult({
           type: 'error',
           guest: null,
@@ -505,8 +529,9 @@ export default function ScannerPage() {
     } catch (e) {
       console.error('Confirm checkin failed:', e);
       playError();
+      closeSuccessModal();
     }
-  }, [confirmGuest, checkinMutation]);
+  }, [confirmGuest, checkinMutation, openSuccessModal, closeSuccessModal]);
 
   // Handle Walk-in Submission via Convex and Google Sheets
   const handleWalkinSubmit = async (e: React.FormEvent) => {
@@ -530,7 +555,7 @@ export default function ScannerPage() {
       if (data.status === 'success') {
         playSuccess();
         const guestData = data.guest as Guest;
-        setSuccessModalGuest(guestData);
+        openSuccessModal(guestData);
         setScanResult({
           type: 'success',
           guest: guestData,
@@ -1037,7 +1062,7 @@ export default function ScannerPage() {
 
       {/* Pop Up Modal: Scan QR Berhasil */}
       {successModalGuest && (
-        <div className="modal-overlay" onClick={() => setSuccessModalGuest(null)}>
+        <div className="modal-overlay" onClick={closeSuccessModal}>
           <div className="modal-dialog modal-success" onClick={(e) => e.stopPropagation()}>
             <div className="modal-icon-wrapper success">
               <span className="material-symbols-outlined">check_circle</span>
@@ -1068,10 +1093,10 @@ export default function ScannerPage() {
               <button
                 type="button"
                 className="btn btn-modal-close"
-                onClick={() => setSuccessModalGuest(null)}
+                onClick={closeSuccessModal}
                 autoFocus
               >
-                <span className="material-symbols-outlined">close</span> Tutup
+                <span className="material-symbols-outlined">close</span> Tutup (Esc)
               </button>
             </div>
           </div>

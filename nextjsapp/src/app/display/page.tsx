@@ -108,7 +108,7 @@ export default function DisplayPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ guest: res.guest }),
-              }).catch(() => {});
+              }).catch(() => { });
             }
           } catch (err) {
             console.error('[Display Hardware QR Scan Error]:', err);
@@ -330,6 +330,10 @@ export default function DisplayPage() {
               {currentGuest.id && (
                 <div className="greeting-id">{currentGuest.id}</div>
               )}
+              <div className="greeting-registered-status">
+                <span className="registered-icon" style={{ fontSize: '1.4rem', fontWeight: 900 }}>✓</span>
+                <span>Sudah Register</span>
+              </div>
               {queueCount > 0 && (
                 <div>
                   <div className="greeting-queue-pill">
